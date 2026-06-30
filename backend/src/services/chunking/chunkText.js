@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { splitIntoChunks, cleanChunk } from './chunkUtils.js';
 import { logger } from '../../utils/logger.js';
 
-const MIN_CHUNK_LENGTH = 100;
+const MIN_CHUNK_LENGTH = 20;
 
 /**
  * Splits page content into structured chunk objects for embedding.

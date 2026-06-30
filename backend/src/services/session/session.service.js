@@ -49,7 +49,7 @@ class SessionService {
     return {
       sessionId: session.sessionId || id,
       status: session.status,
-      stage: session.stage ?? PIPELINE_STAGES.STARTING,
+      stage: session.stage ?? session.currentStep ?? PIPELINE_STAGES.STARTING,
       progress: session.progress ?? 0,
       currentPage: session.currentPage ?? '',
       pagesVisited: session.pagesVisited ?? 0,

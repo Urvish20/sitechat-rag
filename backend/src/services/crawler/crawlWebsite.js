@@ -132,10 +132,10 @@ export async function crawlWebsite(sessionId, startUrl) {
           if (depth < MAX_DEPTH) {
             // Cheerio-based extraction (clean internal links only)
             links = extractLinks(pageData.html, url, linkStats);
-            
+
             for (const link of links) {
               const normalizedLink = normalizeUrl(link, url);
-              
+
               if (visited.has(normalizedLink) || queued.has(normalizedLink)) {
                 duplicateUrlsSkipped++;
                 continue;
@@ -268,12 +268,24 @@ Total crawl duration: ${crawlDurationSec} seconds
       .map((chunk, i) => ({ chunk, vector: embeddings[i] }))
       .filter(({ vector }) => Array.isArray(vector) && vector.length > 0);
 
+    if (validPairs.length === 0) {
+      logger.error(`[${sessionId}] Pipeline failed: no valid vectors produced from ${allChunks.length} chunks.`);
+      await appendLog(`Pipeline failed — no valid vectors produced.`);
+      await patchSession(sessionId, {
+        status: SESSION_STATUS.FAILED,
+        stage: PIPELINE_STAGES.INDEXING,
+        progress: 80,
+        vectorsStored: 0,
+      }, sessionCache);
+      return;
+    }
+
     try {
       await upsertChunks(sessionId, validPairs.map(p => p.chunk), validPairs.map(p => p.vector));
       logger.info(`[${sessionId}] Upserted ${validPairs.length} vectors`);
     } catch (upsertError) {
       logger.error(`[${sessionId}] Qdrant upsert failed: ${upsertError.message}`);
-      await patchSession(sessionId, { status: SESSION_STATUS.FAILED }, sessionCache);
+      await patchSession(sessionId, { status: SESSION_STATUS.FAILED, stage: PIPELINE_STAGES.INDEXING }, sessionCache);
       return;
     }
 

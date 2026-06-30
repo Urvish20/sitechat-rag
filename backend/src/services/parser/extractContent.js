@@ -40,7 +40,7 @@ export function extractContent({ url, title, html }) {
   content = content.replace(/\n\s*\n/g, '\n\n');
   content = content.trim();
 
-  if (content.length < 100) {
+  if (content.length === 0) {
     return null;
   }
 

@@ -13,18 +13,22 @@ const sessionSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['processing', 'completed', 'failed'],
+    enum: ['processing', 'ready', 'completed', 'failed'],
     default: 'processing',
+  },
+  stage: {
+    type: String,
+    required: true,
+    default: 'Starting',
+  },
+  currentStep: {
+    type: String,
+    default: 'Starting',
   },
   progress: {
     type: Number,
     required: true,
     default: 0,
-  },
-  currentStep: {
-    type: String,
-    required: true,
-    default: 'Crawling Website',
   },
   currentPage: {
     type: String,
@@ -37,6 +41,34 @@ const sessionSchema = new mongoose.Schema({
   totalPages: {
     type: Number,
     default: 0,
+  },
+  pagesSkipped: {
+    type: Number,
+    default: 0,
+  },
+  chunksCreated: {
+    type: Number,
+    default: 0,
+  },
+  embeddingsCreated: {
+    type: Number,
+    default: 0,
+  },
+  vectorsStored: {
+    type: Number,
+    default: 0,
+  },
+  crawlDurationSec: {
+    type: Number,
+    default: null,
+  },
+  totalDurationSec: {
+    type: Number,
+    default: null,
+  },
+  logs: {
+    type: Array,
+    default: [],
   },
   pages: {
     type: Array,

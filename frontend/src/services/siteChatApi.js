@@ -2,7 +2,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 export const siteChatApi = createApi({
   reducerPath: 'siteChatApi',
-  baseQuery: fetchBaseQuery({ baseUrl: '/' }),
+  baseQuery: fetchBaseQuery({ baseUrl: import.meta.env.VITE_API_URL || '/' }),
   endpoints: (builder) => ({
     createSession: builder.mutation({
       query: (url) => ({

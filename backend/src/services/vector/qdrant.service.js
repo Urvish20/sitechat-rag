@@ -60,13 +60,17 @@ export async function createCollection() {
  */
 export async function upsertChunks(sessionId, chunks, embeddings) {
   try {
-    if (!chunks || !embeddings || chunks.length !== embeddings.length) {
-      throw new Error('Chunks and embeddings must be non-empty arrays of equal length.');
+    if (!Array.isArray(chunks) || !Array.isArray(embeddings) || chunks.length !== embeddings.length) {
+      throw new Error('Chunks and embeddings must be arrays of equal length.');
+    }
+
+    if (chunks.length === 0) {
+      throw new Error('Chunks and embeddings must be non-empty arrays.');
     }
 
     const points = chunks.map((chunk, idx) => {
       const isObj = typeof chunk === 'object' && chunk !== null;
-      
+
       const chunkText = isObj ? (chunk.chunkText || chunk.text || '') : chunk;
       const pageUrl = isObj ? (chunk.pageUrl || '') : '';
       const pageTitle = isObj ? (chunk.pageTitle || '') : '';
@@ -90,7 +94,7 @@ export async function upsertChunks(sessionId, chunks, embeddings) {
       wait: true,
       points,
     });
-    
+
     logger.info('✓ Upsert complete.');
   } catch (error) {
     logger.error('Error upserting vectors to Qdrant:', error);
@@ -110,7 +114,7 @@ export async function upsertChunks(sessionId, chunks, embeddings) {
 export async function searchChunks(sessionId, queryEmbedding, limit = 5) {
   try {
     logger.info(`Searching vectors in session "${sessionId}" with limit: ${limit}`);
-    
+
     const results = await qdrantClient.search(COLLECTION_NAME, {
       vector: queryEmbedding,
       limit,
