@@ -1,6 +1,6 @@
 import Queue from './queue.js';
 import { canCrawl } from './robots.js';
-import { extractLinks } from './extractLinks.js';
+import { extractLinks, normalizeUrl, isLowValueUrl } from './extractLinks.js';
 import { initBrowser, crawlPage } from './crawlPage.js';
 import { sessionStore } from '../session/session.store.js';
 import { delay } from '../../utils/helpers.js';
@@ -15,6 +15,7 @@ import { upsertChunks } from '../vector/qdrant.service.js';
 const MAX_PAGES = 50;
 const CRAWL_DELAY_MS = 400;
 const MAX_DEPTH = 3;
+const MAX_QUEUE_LIMIT = 1000;
 
 /**
  * Patches session fields using an in-memory cache to reduce DB round-trips.
@@ -61,10 +62,21 @@ export async function crawlWebsite(sessionId, startUrl) {
     }, sessionCache);
 
     const visited = new Set();
+    const queued = new Set();
     const queue = new Queue();
     const crawledPages = [];
 
-    queue.enqueue({ url: startUrl, depth: 0 });
+    // Stats tracking for debug summary
+    const linkStats = { externalUrlsSkipped: 0 };
+    let duplicateUrlsSkipped = 0;
+    let robotsTxtBlocked = 0;
+    let queuePeakSize = 0;
+
+    // Normalize and enqueue the initial URL
+    const normalizedStartUrl = normalizeUrl(startUrl, startUrl);
+    queue.enqueue({ url: normalizedStartUrl, depth: 0 });
+    queued.add(normalizedStartUrl);
+    queuePeakSize = 1;
 
     const browser = await initBrowser();
     const context = await browser.newContext({
@@ -83,15 +95,18 @@ export async function crawlWebsite(sessionId, startUrl) {
       while (!queue.isEmpty() && crawledPages.length < MAX_PAGES) {
         const { url, depth } = queue.dequeue();
 
+        // Prevent duplicate processing of already visited urls
         if (visited.has(url)) continue;
         visited.add(url);
 
         if (depth > MAX_DEPTH) continue;
 
+        // Verify robots.txt rules before hitting page
         const allowed = await canCrawl(url);
         if (!allowed) {
           logger.info(`[${sessionId}] robots.txt blocked: ${url}`);
           await appendLog(`robots.txt blocked: ${url}`);
+          robotsTxtBlocked++;
           await patchSession(sessionId, { pagesSkipped: (sessionCache.pagesSkipped || 0) + 1 }, sessionCache);
           continue;
         }
@@ -113,6 +128,42 @@ export async function crawlWebsite(sessionId, startUrl) {
           const cleanedHtml = cleanHtml(pageData.html);
           const extracted = extractContent({ url: pageData.url, title: pageData.title, html: cleanedHtml });
 
+          let links = [];
+          if (depth < MAX_DEPTH) {
+            // Cheerio-based extraction (clean internal links only)
+            links = extractLinks(pageData.html, url, linkStats);
+            
+            for (const link of links) {
+              const normalizedLink = normalizeUrl(link, url);
+              
+              if (visited.has(normalizedLink) || queued.has(normalizedLink)) {
+                duplicateUrlsSkipped++;
+                continue;
+              }
+
+              // Enforce maximum queue size limit to prevent out-of-memory or infinite crawl issues
+              if (queued.size >= MAX_QUEUE_LIMIT) {
+                logger.warn(`[${sessionId}] Queue limit of ${MAX_QUEUE_LIMIT} reached. Skipping further link additions.`);
+                await appendLog(`Queue limit reached. Discovery stopped.`);
+                break;
+              }
+
+              queue.enqueue({ url: normalizedLink, depth: depth + 1 });
+              queued.add(normalizedLink);
+              queuePeakSize = Math.max(queuePeakSize, queue.size());
+            }
+          }
+
+          // Log queue statistics per page
+          logger.info(`
+Current: ${url}
+Depth: ${depth}
+Queue: ${queue.size()}
+Visited: ${visited.size}
+Queued: ${queued.size}
+Links Found: ${links.length}
+          `);
+
           if (!extracted) {
             logger.warn(`[${sessionId}] Skipping low-content page: ${url}`);
             await appendLog(`Skipped (low content): ${url}`);
@@ -121,14 +172,6 @@ export async function crawlWebsite(sessionId, startUrl) {
             crawledPages.push({ url: pageData.url, title: pageData.title, content: extracted.content });
             const pages = [...(sessionCache.pages || []), { url: pageData.url, title: pageData.title }];
             await patchSession(sessionId, { pages, pagesVisited: crawledPages.length }, sessionCache);
-          }
-
-          if (depth < MAX_DEPTH) {
-            const links = extractLinks(pageData.html, url);
-            logger.debug(`[${sessionId}] Found ${links.length} links on: ${url}`);
-            for (const link of links) {
-              if (!visited.has(link)) queue.enqueue({ url: link, depth: depth + 1 });
-            }
           }
 
           await delay(CRAWL_DELAY_MS);
@@ -146,7 +189,19 @@ export async function crawlWebsite(sessionId, startUrl) {
     const crawlDurationMs = Date.now() - crawlStart;
     const crawlDurationSec = (crawlDurationMs / 1000).toFixed(1);
 
-    logger.info(`[${sessionId}] Crawl complete — ${crawledPages.length} pages in ${crawlDurationSec}s`);
+    // Print summary debug metrics
+    logger.info(`
+--- CRAWL SUMMARY ---
+Total pages crawled: ${visited.size}
+Total unique URLs discovered: ${queued.size}
+Duplicate URLs skipped: ${duplicateUrlsSkipped}
+External URLs skipped: ${linkStats.externalUrlsSkipped}
+Robots.txt blocked: ${robotsTxtBlocked}
+Queue peak size: ${queuePeakSize}
+Total crawl duration: ${crawlDurationSec} seconds
+---------------------
+    `);
+
     await appendLog(`Crawl complete — ${crawledPages.length} pages in ${crawlDurationSec}s`);
 
     if (crawledPages.length === 0) {

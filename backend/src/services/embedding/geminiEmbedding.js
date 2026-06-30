@@ -3,9 +3,12 @@ import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
 
 /**
+ * Generates a 768-dimensional embedding vector for the given text.
+ * Uses gemini-embedding-001 with outputDimensionality configuration.
+ *
  * @param {string} text - Input text to embed.
  * @returns {Promise<number[]>} Embedding vector array.
  */
@@ -14,15 +17,20 @@ export async function generateEmbedding(text) {
     throw new Error('generateEmbedding: text must be a non-empty string.');
   }
 
-  const result = await embeddingModel.embedContent(text.trim());
+  const result = await embeddingModel.embedContent({
+    content: { parts: [{ text: text.trim() }] },
+    outputDimensionality: 768,
+  });
+
   return result.embedding.values;
 }
 
 /**
+ * Generates embeddings for an array of chunk objects.
  *
  * @param {Array<object>} chunks - Array of chunk objects containing a `text` field.
- * @param {Function} [onProgress] - Optional callback invoked after each embedding: (completed, total) => void
- * @returns {Promise<Array<number[]>>} Array of embedding vectors in the same order as chunks.
+ * @param {Function} [onProgress] - Optional callback invoked after each embedding.
+ * @returns {Promise<Array<number[]>>} Array of embedding vectors.
  */
 export async function generateEmbeddings(chunks, onProgress) {
   if (!Array.isArray(chunks) || chunks.length === 0) {

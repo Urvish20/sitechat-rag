@@ -34,6 +34,7 @@ export async function closeBrowser() {
 
 /**
  * Loads a single URL using Playwright with automatic retry on transient failures.
+ * Reuses the browser context and guarantees immediate page disposal via finally block.
  *
  * @param {object} context - Playwright browser context.
  * @param {string} url     - Target URL to crawl.
@@ -67,17 +68,18 @@ export async function crawlPage(context, url) {
 
       const title = await page.title();
       const html = await page.content();
-      await page.close();
 
       return { url, title, html };
     } catch (error) {
-      await page.close();
       lastError = error;
 
       if (attempt < MAX_RETRIES) {
         logger.warn(`Crawl attempt ${attempt} failed for "${url}": ${error.message}. Retrying...`);
         await delay(RETRY_DELAY_MS * attempt);
       }
+    } finally {
+      // Ensure Playwright page is closed immediately under all circumstances to optimize memory
+      await page.close();
     }
   }
 
