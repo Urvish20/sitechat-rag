@@ -1,28 +1,39 @@
 import { v4 as uuidv4 } from 'uuid';
 import { sessionStore } from './session.store.js';
-import { SESSION_STATUS, MOCK_STEPS } from '../../utils/constants.js';
+import { crawlWebsite } from '../crawler/crawlWebsite.js';
+import { SESSION_STATUS } from '../../utils/constants.js';
 import { logger } from '../../utils/logger.js';
 
 class SessionService {
-  constructor() {
-    this.activeIntervals = new Map();
-  }
-
+  /**
+   * Initializes a session, triggers the background crawl operation,
+   * and returns the status metadata immediately.
+   */
   async createSession(url) {
     const sessionId = uuidv4();
+    
     const session = {
       sessionId,
       url,
       status: SESSION_STATUS.PROCESSING,
       progress: 0,
-      currentStep: MOCK_STEPS[0],
+      currentStep: 'Crawling Website',
+      currentPage: '',
+      pagesVisited: 0,
+      totalPages: 0,
+      pages: [],
       createdAt: new Date(),
     };
 
+    // Save initial session state
     await sessionStore.set(sessionId, session);
-    logger.info(`Session created: ${sessionId} for URL: ${url}`);
+    logger.info(`Initialized session ${sessionId} for URL: ${url}`);
 
-    this.simulateIndexing(sessionId);
+    // Trigger crawlWebsite asynchronously in the background.
+    // Do NOT await it, ensuring the client receives a response immediately.
+    crawlWebsite(sessionId, url).catch((err) => {
+      logger.error(`Unhandled error during crawling process for session ${sessionId}:`, err);
+    });
 
     return {
       sessionId,
@@ -30,69 +41,34 @@ class SessionService {
     };
   }
 
+  /**
+   * Fetches active session metadata details.
+   */
   async getSessionStatus(id) {
     const session = await sessionStore.get(id);
     if (!session) return null;
 
     return {
-      sessionId: session.sessionId || session.id, // compatibility support
+      sessionId: session.sessionId || session.id,
       status: session.status,
-      progress: session.progress,
-      currentStep: session.currentStep,
+      progress: session.progress ?? 0,
+      currentPage: session.currentPage ?? '',
+      pagesVisited: session.pagesVisited ?? 0,
+      totalPages: session.totalPages ?? 0,
     };
   }
 
+  /**
+   * Cleans up and deletes active session records.
+   */
   async deleteSession(id) {
     const exists = await sessionStore.has(id);
     if (!exists) return false;
 
-    const intervalId = this.activeIntervals.get(id);
-    if (intervalId) {
-      clearInterval(intervalId);
-      this.activeIntervals.delete(id);
-    }
-
+    // Remove from active store
     await sessionStore.delete(id);
-    logger.info(`Session deleted: ${id}`);
+    logger.info(`Session index removed: ${id}`);
     return true;
-  }
-
-  simulateIndexing(id) {
-    let progress = 0;
-
-    const intervalId = setInterval(async () => {
-      const session = await sessionStore.get(id);
-      if (!session) {
-        clearInterval(intervalId);
-        this.activeIntervals.delete(id);
-        return;
-      }
-
-      progress += 10;
-      if (progress >= 100) {
-        progress = 100;
-        session.status = SESSION_STATUS.COMPLETED;
-        session.currentStep = 'Search Index Built';
-        session.progress = 100;
-
-        clearInterval(intervalId);
-        this.activeIntervals.delete(id);
-        logger.info(`Session indexing completed: ${id}`);
-      } else {
-        session.progress = progress;
-
-        // Map progress to steps
-        const stepIndex = Math.min(
-          Math.floor((progress / 100) * MOCK_STEPS.length),
-          MOCK_STEPS.length - 1
-        );
-        session.currentStep = MOCK_STEPS[stepIndex];
-      }
-
-      await sessionStore.set(id, session);
-    }, 400); // 4 seconds total to index
-
-    this.activeIntervals.set(id, intervalId);
   }
 }
 

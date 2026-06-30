@@ -26,6 +26,22 @@ const sessionSchema = new mongoose.Schema({
     required: true,
     default: 'Crawling Website',
   },
+  currentPage: {
+    type: String,
+    default: '',
+  },
+  pagesVisited: {
+    type: Number,
+    default: 0,
+  },
+  totalPages: {
+    type: Number,
+    default: 0,
+  },
+  pages: {
+    type: Array,
+    default: [],
+  },
   createdAt: {
     type: Date,
     default: Date.now,
