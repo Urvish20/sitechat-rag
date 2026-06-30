@@ -12,27 +12,58 @@ import { chunkText } from '../chunking/chunkText.js';
 import { generateEmbeddings } from '../embedding/geminiEmbedding.js';
 import { upsertChunks } from '../vector/qdrant.service.js';
 
+const MAX_PAGES = 50;
+const CRAWL_DELAY_MS = 400;
+const MAX_DEPTH = 3;
+
 /**
+ * Atomically patches a subset of fields on a session.
+ * Uses an in-memory cache object when provided to avoid repeated DB reads.
+ *
+ * @param {string} sessionId
+ * @param {object} fields
+ * @param {object} [cache] - Optional mutable in-memory session reference to update alongside the store.
  */
-async function patchSession(sessionId, fields) {
-  const session = await sessionStore.get(sessionId);
-  if (!session) return;
-  await sessionStore.set(sessionId, { ...session, ...fields });
+async function patchSession(sessionId, fields, cache) {
+  const current = cache ?? (await sessionStore.get(sessionId));
+  if (!current) return;
+
+  const updated = { ...current, ...fields };
+
+  if (cache) Object.assign(cache, fields);
+
+  await sessionStore.set(sessionId, updated);
 }
 
 /**
+ * Full RAG ingestion pipeline: crawl → clean → extract → chunk → embed → upsert → ready.
+ *
+ * Progress milestones:
+ *   0–29  : crawling pages
+ *   30–49 : pipeline stage transitions (clean/extract/chunk)
+ *   50–59 : chunking
+ *   60–79 : embedding
+ *   80–99 : Qdrant upsert
+ *   100   : ready
  *
  * @param {string} sessionId - Active session UUID.
- * @param {string} startUrl  - Seed URL to begin crawling.
+ * @param {string} startUrl  - Seed URL for the crawl.
  */
 export async function crawlWebsite(sessionId, startUrl) {
   logger.info(`[${sessionId}] Pipeline starting for: ${startUrl}`);
+
+  // Load once and keep an in-memory copy — avoids a DB read on every patchSession call
+  const sessionCache = await sessionStore.get(sessionId);
+  if (!sessionCache) {
+    logger.error(`[${sessionId}] Session not found — aborting pipeline.`);
+    return;
+  }
 
   await patchSession(sessionId, {
     stage: PIPELINE_STAGES.CRAWLING,
     progress: 0,
     status: SESSION_STATUS.PROCESSING,
-  });
+  }, sessionCache);
 
   const visited = new Set();
   const queue = new Queue();
@@ -46,13 +77,15 @@ export async function crawlWebsite(sessionId, startUrl) {
     viewport: { width: 1280, height: 800 },
   });
 
-  // ── Phase 1: Crawl ──────────────────────────────────────────────────────────
+  // ── Phase 1: Crawl ────────────────────────────────────────────────────────
   try {
-    while (!queue.isEmpty() && crawledPages.length < 50) {
+    while (!queue.isEmpty() && crawledPages.length < MAX_PAGES) {
       const { url, depth } = queue.dequeue();
 
       if (visited.has(url)) continue;
       visited.add(url);
+
+      if (depth > MAX_DEPTH) continue;
 
       const allowed = await canCrawl(url);
       if (!allowed) {
@@ -60,76 +93,43 @@ export async function crawlWebsite(sessionId, startUrl) {
         continue;
       }
 
-      if (depth > 3) continue;
-
-      const crawledCount = crawledPages.length;
-      const crawlProgress = Math.min(29, Math.floor((crawledCount / 50) * 30));
-
+      const crawlProgress = Math.min(29, Math.floor((crawledPages.length / MAX_PAGES) * 30));
       await patchSession(sessionId, {
         stage: PIPELINE_STAGES.CRAWLING,
         progress: crawlProgress,
         currentPage: url,
-        pagesVisited: crawledCount,
-      });
+        pagesVisited: crawledPages.length,
+      }, sessionCache);
 
-      logger.info(`[${sessionId}] Crawling (${crawledCount + 1}/50): ${url}`);
+      logger.info(`[${sessionId}] Crawling (${crawledPages.length + 1}/${MAX_PAGES}): ${url}`);
 
       try {
         const pageData = await crawlPage(context, url);
 
-        // ── Phase 2 (inline): Clean HTML ──
-        await patchSession(sessionId, { stage: PIPELINE_STAGES.CLEANING, progress: 30 });
         const cleanedHtml = cleanHtml(pageData.html);
-
-        // ── Phase 3 (inline): Extract Content ──
-        await patchSession(sessionId, { stage: PIPELINE_STAGES.EXTRACTING, progress: 35 });
-        const extracted = extractContent({
-          url: pageData.url,
-          title: pageData.title,
-          html: cleanedHtml,
-        });
+        const extracted = extractContent({ url: pageData.url, title: pageData.title, html: cleanedHtml });
 
         if (!extracted) {
           logger.warn(`[${sessionId}] Skipping low-content page: ${url}`);
-          if (depth < 3) {
-            const links = extractLinks(pageData.html, url);
-            for (const link of links) {
-              if (!visited.has(link)) queue.enqueue({ url: link, depth: depth + 1 });
-            }
-          }
-          await delay(500);
-          continue;
+        } else {
+          crawledPages.push({ url: pageData.url, title: pageData.title, content: extracted.content });
+
+          const pages = [...(sessionCache.pages || []), { url: pageData.url, title: pageData.title }];
+          await patchSession(sessionId, { pages, pagesVisited: crawledPages.length }, sessionCache);
         }
 
-        crawledPages.push({
-          url: pageData.url,
-          title: pageData.title,
-          content: extracted.content,
-        });
-
-        const currentSession = await sessionStore.get(sessionId);
-        if (currentSession) {
-          const pages = currentSession.pages || [];
-          pages.push({ url: pageData.url, title: pageData.title });
-          await sessionStore.set(sessionId, {
-            ...currentSession,
-            pages,
-            pagesVisited: crawledPages.length,
-            progress: Math.min(29, Math.floor((crawledPages.length / 50) * 30)),
-          });
-        }
-
-        await delay(500);
-
-        if (depth < 3) {
+        // Always extract links regardless of content quality so we discover more pages
+        if (depth < MAX_DEPTH) {
           const links = extractLinks(pageData.html, url);
-          logger.info(`[${sessionId}] Found ${links.length} links on: ${url}`);
+          logger.debug(`[${sessionId}] Found ${links.length} links on: ${url}`);
           for (const link of links) {
             if (!visited.has(link)) queue.enqueue({ url: link, depth: depth + 1 });
           }
         }
+
+        await delay(CRAWL_DELAY_MS);
       } catch (pageError) {
-        logger.warn(`[${sessionId}] Skipping failed page "${url}": ${pageError.message}`);
+        logger.warn(`[${sessionId}] Page failed after retries "${url}": ${pageError.message}`);
       }
     }
   } finally {
@@ -144,7 +144,7 @@ export async function crawlWebsite(sessionId, startUrl) {
       stage: PIPELINE_STAGES.CRAWLING,
       progress: 0,
       totalPages: 0,
-    });
+    }, sessionCache);
     logger.error(`[${sessionId}] Pipeline failed: no usable pages crawled.`);
     return;
   }
@@ -153,75 +153,70 @@ export async function crawlWebsite(sessionId, startUrl) {
     totalPages: crawledPages.length,
     pagesVisited: crawledPages.length,
     progress: 30,
-  });
+  }, sessionCache);
 
-  // ── Phase 4: Chunk all pages ────────────────────────────────────────────────
-  await patchSession(sessionId, { stage: PIPELINE_STAGES.CHUNKING, progress: 50 });
+  // ── Phase 2: Chunk ────────────────────────────────────────────────────────
+  await patchSession(sessionId, { stage: PIPELINE_STAGES.CHUNKING, progress: 50 }, sessionCache);
 
   const allChunks = [];
   for (const page of crawledPages) {
-    const pageChunks = chunkText(page);
-    allChunks.push(...pageChunks);
+    allChunks.push(...chunkText(page));
   }
 
   logger.info(`[${sessionId}] Chunking complete — ${allChunks.length} chunks created.`);
-  await patchSession(sessionId, { chunksCreated: allChunks.length, progress: 60 });
+  await patchSession(sessionId, { chunksCreated: allChunks.length, progress: 60 }, sessionCache);
 
   if (allChunks.length === 0) {
     await patchSession(sessionId, {
       status: SESSION_STATUS.FAILED,
       stage: PIPELINE_STAGES.CHUNKING,
-    });
+    }, sessionCache);
     logger.error(`[${sessionId}] Pipeline failed: no chunks produced.`);
     return;
   }
 
-  // ── Phase 5: Generate Embeddings ────────────────────────────────────────────
-  await patchSession(sessionId, { stage: PIPELINE_STAGES.EMBEDDING, progress: 60 });
+  // ── Phase 3: Embed ────────────────────────────────────────────────────────
+  await patchSession(sessionId, { stage: PIPELINE_STAGES.EMBEDDING, progress: 60 }, sessionCache);
   logger.info(`[${sessionId}] Generating embeddings for ${allChunks.length} chunks...`);
 
   let embeddedCount = 0;
-
   const embeddings = await generateEmbeddings(allChunks, async (completed, total) => {
     embeddedCount = completed;
     const embedProgress = 60 + Math.floor((completed / total) * 20);
     await patchSession(sessionId, {
       embeddingsCreated: completed,
       progress: Math.min(79, embedProgress),
-    });
+    }, sessionCache);
   });
 
   logger.info(`[${sessionId}] Embeddings complete — ${embeddedCount} vectors generated.`);
-  await patchSession(sessionId, { embeddingsCreated: embeddedCount, progress: 80 });
+  await patchSession(sessionId, { embeddingsCreated: embeddedCount, progress: 80 }, sessionCache);
 
-  // ── Phase 6: Upsert into Qdrant ─────────────────────────────────────────────
-  await patchSession(sessionId, { stage: PIPELINE_STAGES.INDEXING, progress: 80 });
-  logger.info(`[${sessionId}] Upserting ${allChunks.length} vectors into Qdrant...`);
+  // ── Phase 4: Upsert ───────────────────────────────────────────────────────
+  await patchSession(sessionId, { stage: PIPELINE_STAGES.INDEXING, progress: 80 }, sessionCache);
+  logger.info(`[${sessionId}] Upserting vectors into Qdrant...`);
 
   const validPairs = allChunks
     .map((chunk, i) => ({ chunk, vector: embeddings[i] }))
     .filter(({ vector }) => Array.isArray(vector) && vector.length > 0);
 
-  const validChunks = validPairs.map((p) => p.chunk);
-  const validVectors = validPairs.map((p) => p.vector);
-
   try {
-    await upsertChunks(sessionId, validChunks, validVectors);
-    logger.info(`[${sessionId}] Upserted ${validChunks.length} vectors successfully.`);
+    await upsertChunks(sessionId, validPairs.map(p => p.chunk), validPairs.map(p => p.vector));
+    logger.info(`[${sessionId}] Upserted ${validPairs.length} vectors successfully.`);
   } catch (upsertError) {
-    logger.error(`[${sessionId}] Qdrant upsert failed:`, upsertError.message);
-    await patchSession(sessionId, { status: SESSION_STATUS.FAILED });
+    logger.error(`[${sessionId}] Qdrant upsert failed: ${upsertError.message}`);
+    await patchSession(sessionId, { status: SESSION_STATUS.FAILED }, sessionCache);
     return;
   }
 
-  // ── Phase 7: Mark Ready ─────────────────────────────────────────────────────
+  // ── Phase 5: Ready ────────────────────────────────────────────────────────
   await patchSession(sessionId, {
     status: SESSION_STATUS.READY,
     stage: PIPELINE_STAGES.READY,
     progress: 100,
-    vectorsStored: validChunks.length,
-    currentPage: 'Completed',
-  });
+    vectorsStored: validPairs.length,
+    currentPage: '',
+  }, sessionCache);
 
-  logger.info(`[${sessionId}] Pipeline complete. Session is ready.`);
+  logger.info(`[${sessionId}] Pipeline complete — session is ready.`);
 }

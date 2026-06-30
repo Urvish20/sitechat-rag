@@ -1,47 +1,52 @@
+const BINARY_EXTENSIONS = /\.(pdf|zip|tar|gz|exe|apk|dmg|iso|png|jpe?g|gif|webp|svg|mp[34]|wav|ogg|aac|flac|docx?|xlsx?|pptx?|csv|rss|atom|xml|feed)$/i;
+const IGNORED_PROTOCOLS = /^(mailto|tel|javascript|sms|file|data|ftp):/i;
+
 /**
- * Extracts and normalizes internal absolute links from raw HTML content.
- * 
- * @param {string} html - Raw HTML document string.
- * @param {string} currentUrl - Absolute URL of the page containing the html.
- * @returns {Array<string>} List of unique internal absolute URLs.
+ * Extracts, normalizes, and deduplicates internal links from raw HTML.
+ * Query parameters and URL fragments are stripped to prevent crawling
+ * duplicate page variants (e.g. ?ref=nav and ?ref=footer of the same page).
+ *
+ * @param {string} html       - Raw HTML document string.
+ * @param {string} currentUrl - Absolute URL of the page being parsed.
+ * @returns {string[]} Unique normalized internal URLs.
  */
 export function extractLinks(html, currentUrl) {
-  const links = [];
-  const urlObj = new URL(currentUrl);
-  const domain = urlObj.host;
+  const base = new URL(currentUrl);
+  const domain = base.host;
 
   const hrefRegex = /href\s*=\s*(?:["']([^"']*)["']|([^>\s]*))/gi;
+  const seen = new Set();
+  const links = [];
+
   let match;
-
   while ((match = hrefRegex.exec(html)) !== null) {
-    let link = match[1] || match[2];
-    if (!link) continue;
+    let raw = (match[1] ?? match[2] ?? '').trim();
 
-    link = link.trim();
-
-    if (link.startsWith('#')) continue;
-
-    if (/^(mailto|tel|javascript|sms|file):/i.test(link)) continue;
-
-    if (/\.(pdf|zip|tar|gz|exe|apk|png|jpe?g|gif|webp|svg|mp[34]|wav|ogg|docx?|xlsx?|pptx?)$/i.test(link)) {
-      continue;
-    }
+    if (!raw || raw.startsWith('#')) continue;
+    if (IGNORED_PROTOCOLS.test(raw)) continue;
+    if (BINARY_EXTENSIONS.test(raw)) continue;
 
     try {
-      const absoluteUrl = new URL(link, currentUrl);
+      const parsed = new URL(raw, currentUrl);
 
-      if (absoluteUrl.host !== domain) continue;
+      if (parsed.host !== domain) continue;
 
-      let normalized = absoluteUrl.origin + absoluteUrl.pathname;
-      if (normalized.endsWith('/') && normalized.length > absoluteUrl.origin.length + 1) {
+      // Strip query string and fragment — treat /page?a=1 and /page?a=2 as the same page
+      let normalized = parsed.origin + parsed.pathname;
+
+      // Remove trailing slash (except root)
+      if (normalized.length > parsed.origin.length + 1 && normalized.endsWith('/')) {
         normalized = normalized.slice(0, -1);
       }
 
-      links.push(normalized);
-    } catch (e) {
-      // Ignore
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        links.push(normalized);
+      }
+    } catch {
+      // Malformed href — skip silently
     }
   }
 
-  return [...new Set(links)];
+  return links;
 }
