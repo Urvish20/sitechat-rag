@@ -1,4 +1,3 @@
-// HTML elements to strip completely during cleaning
 export const REMOVE_TAGS = [
   'script',
   'style',
@@ -18,7 +17,6 @@ export const REMOVE_TAGS = [
   'option',
 ];
 
-// Content container elements to prioritize for text extraction
 export const CONTENT_TAGS = [
   'main',
   'article',
@@ -36,7 +34,6 @@ export const CONTENT_TAGS = [
   'blockquote',
 ];
 
-// Selectors commonly used for cookie consent walls and banners
 export const COOKIE_SELECTORS = [
   '.cookie-banner',
   '.cookie-consent',
@@ -48,7 +45,6 @@ export const COOKIE_SELECTORS = [
   '#consent-banner',
 ];
 
-// Selectors targeting advertising platforms, sidebars, and popups
 export const AD_SELECTORS = [
   '.ads',
   '.advertisement',

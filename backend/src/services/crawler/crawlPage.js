@@ -11,7 +11,7 @@ export async function initBrowser() {
     logger.info('Launching Playwright Chromium browser instance...');
     browser = await chromium.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] // helpful in container/sandboxed runtimes
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
   }
   return browser;
@@ -42,7 +42,7 @@ export async function crawlPage(context, url) {
     logger.debug(`Navigating to URL: ${url}`);
     const response = await page.goto(url, {
       waitUntil: 'networkidle',
-      timeout: 30000, // 30s timeout cap
+      timeout: 30000,
     });
 
     if (!response) {

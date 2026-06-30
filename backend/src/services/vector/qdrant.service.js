@@ -25,12 +25,10 @@ export async function collectionExists() {
  */
 export async function createCollection() {
   try {
-    // Check if client is initialized
     if (!qdrantClient) {
       throw new Error('Qdrant Client is not initialized.');
     }
 
-    // Try a ping/collection check to verify network/API key connection
     const exists = await collectionExists();
 
     if (exists) {

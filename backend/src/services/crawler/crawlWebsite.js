@@ -25,10 +25,8 @@ export async function crawlWebsite(sessionId, startUrl) {
   const startUrlObj = new URL(startUrl);
   const domain = startUrlObj.host;
 
-  // Initialize queue with seed URL at depth 0
   queue.enqueue({ url: startUrl, depth: 0 });
 
-  // Init browser context
   const browser = await initBrowser();
   const context = await browser.newContext({
     userAgent: 'SiteChatBot/1.0',
@@ -40,11 +38,9 @@ export async function crawlWebsite(sessionId, startUrl) {
       const currentItem = queue.dequeue();
       const { url, depth } = currentItem;
 
-      // Prevent duplicate processing
       if (visited.has(url)) continue;
       visited.add(url);
 
-      // Check robots.txt disallows
       const allowed = await canCrawl(url);
       if (!allowed) {
         logger.info(`Skipping robots.txt blocked page: ${url}`);
@@ -65,7 +61,6 @@ export async function crawlWebsite(sessionId, startUrl) {
       try {
         const pageData = await crawlPage(context, url);
 
-        // Run Content Cleaner and Text Extractor
         console.log(`Cleaning\n${url}`);
         const cleanedHtml = cleanHtml(pageData.html);
         console.log('Skipped\nFooter\nNavigation\nCookie Banner');
@@ -78,7 +73,6 @@ export async function crawlWebsite(sessionId, startUrl) {
 
         if (!extracted) {
           logger.warn(`Skipping page with insufficient content (<100 chars): ${url}`);
-          // Extract links from raw html anyway to continue crawler discovery
           if (depth < 3) {
             const links = extractLinks(pageData.html, url);
             logger.info(`Found ${links.length} internal links on skipped page: ${url}`);

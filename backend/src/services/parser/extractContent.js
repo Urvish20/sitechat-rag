@@ -1,6 +1,5 @@
 import * as cheerio from 'cheerio';
 
-// Leaf block text elements to pull text from directly without duplicating container parent texts
 const LEAF_TEXT_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'p', 'li', 'pre', 'code', 'blockquote'
@@ -22,10 +21,8 @@ export function extractContent({ url, title, html }) {
   const $ = cheerio.load(html);
   const textBlocks = [];
 
-  // Anchor text extraction inside main body tags first (article/main) or default to body
   const targetRoot = $('main, article').length > 0 ? $('main, article').first() : $('body');
 
-  // Extract from leaf block elements
   targetRoot.find(LEAF_TEXT_TAGS.join(',')).each((_, el) => {
     const text = $(el).text().trim();
     if (text) {
@@ -33,19 +30,16 @@ export function extractContent({ url, title, html }) {
     }
   });
 
-  // Fallback to body text elements if leaf nodes returned empty
   if (textBlocks.length === 0) {
     const text = targetRoot.text().trim();
     if (text) textBlocks.push(text);
   }
 
-  // Normalize duplicate blank lines and trim extra space layouts
   let content = textBlocks.join('\n');
-  content = content.replace(/[ \t]+/g, ' '); // remove double spaces
-  content = content.replace(/\n\s*\n/g, '\n\n'); // normalize double newlines
+  content = content.replace(/[ \t]+/g, ' ');
+  content = content.replace(/\n\s*\n/g, '\n\n');
   content = content.trim();
 
-  // Skip pages with insufficient content (under 100 characters)
   if (content.length < 100) {
     return null;
   }

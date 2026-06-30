@@ -13,16 +13,10 @@ export function cleanHtml(html) {
 
   const $ = cheerio.load(html);
 
-  // 1. Strip unwanted HTML elements
   $(REMOVE_TAGS.join(',')).remove();
-
-  // 2. Strip cookie consent banners and overlay walls
   $(COOKIE_SELECTORS.join(',')).remove();
-
-  // 3. Strip promotion ads, newsletters, and social buttons
   $(AD_SELECTORS.join(',')).remove();
 
-  // 4. Remove elements marked hidden by attributes or styles
   $('[hidden]').remove();
   $('[aria-hidden="true"]').remove();
   
@@ -33,7 +27,6 @@ export function cleanHtml(html) {
     }
   });
 
-  // 5. Clean up recursively any empty nodes (skipping key exceptions)
   const stripEmptyNodes = () => {
     let changed = false;
     $(':empty').each((_, el) => {
