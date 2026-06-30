@@ -2,7 +2,19 @@ import mongoose from 'mongoose';
 import app from './app.js';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
+import { createCollection } from './services/vector/qdrant.service.js';
 
+// Connect to Qdrant Cloud
+try {
+  await createCollection();
+  console.log('✓ Connected to Qdrant Cloud');
+  console.log('✓ Collection Ready');
+} catch (error) {
+  logger.error('CRITICAL: Failed to initialize Qdrant. Shutting down server:', error.message);
+  process.exit(1);
+}
+
+// Connect to MongoDB database if connection string is configured
 if (env.MONGO_DB_URL) {
   mongoose.connect(env.MONGO_DB_URL)
     .then(() => logger.info('Successfully connected to MongoDB database.'))
