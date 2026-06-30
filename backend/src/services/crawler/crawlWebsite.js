@@ -6,6 +6,8 @@ import { sessionStore } from '../session/session.store.js';
 import { delay } from '../../utils/helpers.js';
 import { logger } from '../../utils/logger.js';
 import { SESSION_STATUS } from '../../utils/constants.js';
+import { cleanHtml } from '../parser/cleanHtml.js';
+import { extractContent } from '../parser/extractContent.js';
 
 /**
  * 
@@ -23,8 +25,10 @@ export async function crawlWebsite(sessionId, startUrl) {
   const startUrlObj = new URL(startUrl);
   const domain = startUrlObj.host;
 
+  // Initialize queue with seed URL at depth 0
   queue.enqueue({ url: startUrl, depth: 0 });
 
+  // Init browser context
   const browser = await initBrowser();
   const context = await browser.newContext({
     userAgent: 'SiteChatBot/1.0',
@@ -36,9 +40,11 @@ export async function crawlWebsite(sessionId, startUrl) {
       const currentItem = queue.dequeue();
       const { url, depth } = currentItem;
 
+      // Prevent duplicate processing
       if (visited.has(url)) continue;
       visited.add(url);
 
+      // Check robots.txt disallows
       const allowed = await canCrawl(url);
       if (!allowed) {
         logger.info(`Skipping robots.txt blocked page: ${url}`);
@@ -58,12 +64,48 @@ export async function crawlWebsite(sessionId, startUrl) {
 
       try {
         const pageData = await crawlPage(context, url);
-        crawledPages.push(pageData);
+
+        // Run Content Cleaner and Text Extractor
+        console.log(`Cleaning\n${url}`);
+        const cleanedHtml = cleanHtml(pageData.html);
+        console.log('Skipped\nFooter\nNavigation\nCookie Banner');
+
+        const extracted = extractContent({
+          url: pageData.url,
+          title: pageData.title,
+          html: cleanedHtml,
+        });
+
+        if (!extracted) {
+          logger.warn(`Skipping page with insufficient content (<100 chars): ${url}`);
+          // Extract links from raw html anyway to continue crawler discovery
+          if (depth < 3) {
+            const links = extractLinks(pageData.html, url);
+            logger.info(`Found ${links.length} internal links on skipped page: ${url}`);
+            for (const link of links) {
+              if (!visited.has(link)) {
+                queue.enqueue({ url: link, depth: depth + 1 });
+              }
+            }
+          }
+          await delay(500);
+          continue;
+        }
+
+        console.log(`Extracted\n${extracted.content.length} characters`);
+
+        const parsedPage = {
+          url: pageData.url,
+          title: pageData.title,
+          content: extracted.content,
+        };
+
+        crawledPages.push(parsedPage);
 
         const currentSession = await sessionStore.get(sessionId);
         if (currentSession) {
           if (!currentSession.pages) currentSession.pages = [];
-          currentSession.pages.push({ url: pageData.url, title: pageData.title });
+          currentSession.pages.push({ url: parsedPage.url, title: parsedPage.title });
           currentSession.pagesVisited = crawledPages.length;
           await sessionStore.set(sessionId, currentSession);
         }
