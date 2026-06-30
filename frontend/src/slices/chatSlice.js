@@ -1,12 +1,23 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const initialSteps = [
-  { id: 'crawl', label: 'Crawling Website', status: 'pending' },
-  { id: 'extract', label: 'Extracting Content', status: 'pending' },
-  { id: 'clean', label: 'Cleaning HTML', status: 'pending' },
-  { id: 'chunk', label: 'Chunking Content', status: 'pending' },
-  { id: 'embed', label: 'Creating Embeddings', status: 'pending' },
-  { id: 'index', label: 'Building Search Index', status: 'pending' },
+  { id: 'crawl',   label: 'Crawling Website',      stage: 'Crawling Website',      status: 'pending' },
+  { id: 'clean',   label: 'Cleaning HTML',          stage: 'Cleaning HTML',          status: 'pending' },
+  { id: 'extract', label: 'Extracting Content',     stage: 'Extracting Content',     status: 'pending' },
+  { id: 'chunk',   label: 'Chunking',               stage: 'Chunking',               status: 'pending' },
+  { id: 'embed',   label: 'Generating Embeddings',  stage: 'Generating Embeddings',  status: 'pending' },
+  { id: 'index',   label: 'Indexing into Qdrant',   stage: 'Indexing into Qdrant',   status: 'pending' },
+  { id: 'ready',   label: 'Ready',                  stage: 'Ready',                  status: 'pending' },
+];
+
+const STAGE_ORDER = [
+  'Crawling Website',
+  'Cleaning HTML',
+  'Extracting Content',
+  'Chunking',
+  'Generating Embeddings',
+  'Indexing into Qdrant',
+  'Ready',
 ];
 
 const initialState = {
@@ -14,6 +25,10 @@ const initialState = {
   currentUrl: '',
   sessionId: null,
   crawlingProgress: 0,
+  currentStage: '',
+  chunksCreated: 0,
+  embeddingsCreated: 0,
+  vectorsStored: 0,
   steps: initialSteps,
   messages: [],
   sessions: [
@@ -68,27 +83,30 @@ export const chatSlice = createSlice({
     updateProgress: (state, action) => {
       const progress = action.payload;
       state.crawlingProgress = progress;
-      
-      const stepCount = state.steps.length;
-      state.steps = state.steps.map((step, idx) => {
-        const threshold = (idx + 1) * (100 / stepCount);
-        if (progress >= 100) {
-          return { ...step, status: 'completed' };
-        } else if (progress >= threshold) {
-          return { ...step, status: 'completed' };
-        } else if (progress >= threshold - (100 / stepCount) && step.status === 'pending') {
-          return { ...step, status: 'running' };
-        }
-        return step;
-      });
 
-      // Update progress in session object list
       if (state.sessionId) {
         const session = state.sessions.find(s => s.id === state.sessionId);
-        if (session) {
-          session.progress = progress;
-        }
+        if (session) session.progress = progress;
       }
+    },
+    updateStageFromBackend: (state, action) => {
+      const { stage, chunksCreated, embeddingsCreated, vectorsStored } = action.payload;
+
+      if (stage) state.currentStage = stage;
+      if (chunksCreated !== undefined) state.chunksCreated = chunksCreated;
+      if (embeddingsCreated !== undefined) state.embeddingsCreated = embeddingsCreated;
+      if (vectorsStored !== undefined) state.vectorsStored = vectorsStored;
+
+      // Map backend stage string to step statuses
+      const currentStageIndex = STAGE_ORDER.indexOf(stage);
+      if (currentStageIndex === -1) return;
+
+      state.steps = state.steps.map((step) => {
+        const stepStageIndex = STAGE_ORDER.indexOf(step.stage);
+        if (stepStageIndex < currentStageIndex) return { ...step, status: 'completed' };
+        if (stepStageIndex === currentStageIndex) return { ...step, status: 'running' };
+        return { ...step, status: 'pending' };
+      });
     },
     setAppState: (state, action) => {
       state.appState = action.payload;
@@ -189,6 +207,7 @@ export const {
   startSession,
   setSessionId,
   updateProgress,
+  updateStageFromBackend,
   setAppState,
   addMessage,
   setMessages,

@@ -1,78 +1,73 @@
+import { retrieve } from './retriever.js';
+import { buildPrompt } from './promptBuilder.js';
+import { askGemini } from './geminiChat.js';
 import { sessionStore } from '../session/session.store.js';
 import { logger } from '../../utils/logger.js';
-import { Chat } from '../../models/chat.model.js';
-import mongoose from 'mongoose';
+
+const FALLBACK_ANSWER = "I couldn't find that information in the crawled website.";
 
 class ChatService {
-  isDbConnected() {
-    return mongoose.connection.readyState === 1;
-  }
-
+  /**
+   * Full RAG pipeline: retrieve → prompt → generate → return.
+   *
+   * @param {string} sessionId - Active session ID.
+   * @param {string} question  - User question.
+   * @returns {Promise<{answer: string, sources: Array<{pageTitle: string, pageUrl: string, score: number}>> | null>}
+   *          Returns null if the session does not exist.
+   */
   async askQuestion(sessionId, question) {
     const session = await sessionStore.get(sessionId);
-    if (!session) return null;
-
-    logger.info(`Chat request in session: ${sessionId} for query: "${question}"`);
-
-    // Basic keyword parsing for realistic responses
-    let answer = '';
-    let sources = [];
-    const query = question.toLowerCase();
-
-    if (query.includes('summary') || query.includes('what is') || query.includes('about')) {
-      answer = `Based on the local RAG indexing of **${session.url}**, here is a summary of the website:\n\n1. **Core Purpose**: The website outlines developer guidelines, library packages, and documentation updates.\n2. **Key Capabilities**: Focuses on high-performance operations, quick installation procedures, and customizable components.\n3. **Community Hub**: Features references to GitHub issues, Discord chats, and community support boards.`;
-      sources = [
-        {
-          title: 'Documentation Index',
-          url: `${session.url}/docs`
-        },
-        {
-          title: 'Getting Started Guide',
-          url: `${session.url}/getting-started`
-        }
-      ];
-    } else if (query.includes('contact') || query.includes('support') || query.includes('help')) {
-      answer = `To get assistance or contact the team behind **${session.url}**, you can use the following support routes:\n\n- **Email Help Desk**: Standard ticket submission guides are available under the support section.\n- **Discord Channels**: Connect with moderators and developers for live assistance.\n- **GitHub issues**: Post bugs and request changes directly on their public repositories.`;
-      sources = [
-        {
-          title: 'Contact Support Channels',
-          url: `${session.url}/contact`
-        }
-      ];
-    } else {
-      answer = `Thank you for asking! I queried the local memory index of **${session.url}** for "${question}". I found relevant sections discussing architectural designs, developer tutorials, and core code setups.\n\nLet me know if you would like me to detail any specific section!`;
-      sources = [
-        {
-          title: 'Documentation Overview',
-          url: `${session.url}/docs/overview`
-        }
-      ];
+    if (!session) {
+      logger.warn(`[chatService] Session not found: ${sessionId}`);
+      return null;
     }
 
-    // Save history in MongoDB if connected
-    if (this.isDbConnected()) {
-      try {
-        await Chat.create({
-          sessionId,
-          role: 'user',
-          text: question,
-          sources: []
-        });
-        await Chat.create({
-          sessionId,
-          role: 'assistant',
-          text: answer,
-          sources
-        });
-      } catch (err) {
-        logger.error('Failed to log chat interaction to DB:', err);
-      }
+    logger.info(`[chatService] Processing question for session "${sessionId}": "${question}"`);
+
+    // Step 1 — Retrieve relevant chunks from Qdrant
+    let chunks;
+    try {
+      chunks = await retrieve(sessionId, question);
+    } catch (err) {
+      logger.error('[chatService] Retrieval failed:', err.message);
+      return { answer: FALLBACK_ANSWER, sources: [] };
     }
 
-    return {
-      answer,
-      sources
-    };
+    // No relevant context found or below similarity threshold
+    if (!chunks || chunks.length === 0) {
+      logger.warn('[chatService] No relevant context found. Returning fallback answer.');
+      return { answer: FALLBACK_ANSWER, sources: [] };
+    }
+
+    // Step 2 — Build grounded prompt
+    const prompt = buildPrompt(chunks, question);
+
+    // Step 3 — Ask Gemini
+    let answer;
+    try {
+      answer = await askGemini(prompt);
+    } catch (err) {
+      logger.error('[chatService] Gemini generation failed:', err.message);
+      return { answer: 'An error occurred while generating the answer. Please try again.', sources: [] };
+    }
+
+    // Step 4 — Deduplicate and format sources
+    const seenUrls = new Set();
+    const sources = chunks
+      .filter(({ pageUrl }) => {
+        if (seenUrls.has(pageUrl)) return false;
+        seenUrls.add(pageUrl);
+        return true;
+      })
+      .map(({ pageTitle, pageUrl, score }) => ({
+        pageTitle,
+        pageUrl,
+        score: Math.round(score * 100) / 100,
+      }));
+
+    logger.info(`[chatService] Returning answer with ${sources.length} unique sources.`);
+
+    return { answer, sources };
   }
 }
 

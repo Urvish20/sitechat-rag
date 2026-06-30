@@ -1,73 +1,80 @@
 import { v4 as uuidv4 } from 'uuid';
 import { sessionStore } from './session.store.js';
 import { crawlWebsite } from '../crawler/crawlWebsite.js';
-import { SESSION_STATUS } from '../../utils/constants.js';
+import { deleteSessionVectors } from '../vector/qdrant.service.js';
+import { SESSION_STATUS, PIPELINE_STAGES } from '../../utils/constants.js';
 import { logger } from '../../utils/logger.js';
 
 class SessionService {
   /**
-   * Initializes a session, triggers the background crawl operation,
-   * and returns the status metadata immediately.
+   * Initializes a session, triggers the background crawl + embed pipeline,
+   * and returns the session ID immediately.
    */
   async createSession(url) {
     const sessionId = uuidv4();
-    
+
     const session = {
       sessionId,
       url,
       status: SESSION_STATUS.PROCESSING,
+      stage: PIPELINE_STAGES.STARTING,
       progress: 0,
-      currentStep: 'Crawling Website',
       currentPage: '',
       pagesVisited: 0,
       totalPages: 0,
+      chunksCreated: 0,
+      embeddingsCreated: 0,
+      vectorsStored: 0,
       pages: [],
       createdAt: new Date(),
     };
 
-    // Save initial session state
     await sessionStore.set(sessionId, session);
     logger.info(`Initialized session ${sessionId} for URL: ${url}`);
 
-    // Trigger crawlWebsite asynchronously in the background.
-    // Do NOT await it, ensuring the client receives a response immediately.
     crawlWebsite(sessionId, url).catch((err) => {
-      logger.error(`Unhandled error during crawling process for session ${sessionId}:`, err);
+      logger.error(`Unhandled pipeline error for session ${sessionId}:`, err);
     });
 
-    return {
-      sessionId,
-      status: session.status,
-    };
+    return { sessionId, status: session.status };
   }
 
   /**
-   * Fetches active session metadata details.
+   * Returns the full status and progress metadata for a session.
    */
   async getSessionStatus(id) {
     const session = await sessionStore.get(id);
     if (!session) return null;
 
     return {
-      sessionId: session.sessionId || session.id,
+      sessionId: session.sessionId || id,
       status: session.status,
+      stage: session.stage ?? PIPELINE_STAGES.STARTING,
       progress: session.progress ?? 0,
       currentPage: session.currentPage ?? '',
       pagesVisited: session.pagesVisited ?? 0,
       totalPages: session.totalPages ?? 0,
+      chunksCreated: session.chunksCreated ?? 0,
+      embeddingsCreated: session.embeddingsCreated ?? 0,
+      vectorsStored: session.vectorsStored ?? 0,
     };
   }
 
   /**
-   * Cleans up and deletes active session records.
+   * Deletes a session record.
    */
   async deleteSession(id) {
     const exists = await sessionStore.has(id);
     if (!exists) return false;
 
-    // Remove from active store
+    try {
+      await deleteSessionVectors(id);
+    } catch (err) {
+      logger.warn(`[sessionService] Could not delete Qdrant vectors for session ${id}:`, err.message);
+    }
+
     await sessionStore.delete(id);
-    logger.info(`Session index removed: ${id}`);
+    logger.info(`Session removed: ${id}`);
     return true;
   }
 }

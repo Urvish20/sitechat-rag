@@ -10,7 +10,19 @@ export const ERROR_CODES = {
 export const SESSION_STATUS = {
   PROCESSING: 'processing',
   COMPLETED: 'completed',
+  READY: 'ready',
   FAILED: 'failed'
+};
+
+export const PIPELINE_STAGES = {
+  STARTING: 'Starting',
+  CRAWLING: 'Crawling Website',
+  CLEANING: 'Cleaning HTML',
+  EXTRACTING: 'Extracting Content',
+  CHUNKING: 'Chunking',
+  EMBEDDING: 'Generating Embeddings',
+  INDEXING: 'Indexing into Qdrant',
+  READY: 'Ready',
 };
 
 export const MOCK_STEPS = [

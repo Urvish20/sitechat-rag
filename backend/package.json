@@ -23,7 +23,8 @@
     "@qdrant/js-client-rest": "^1.9.0",
     "playwright": "^1.44.0",
     "robots-parser": "^3.0.1",
-    "cheerio": "^1.0.0-rc.12"
+    "cheerio": "^1.0.0-rc.12",
+    "@google/generative-ai": "^0.11.4"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

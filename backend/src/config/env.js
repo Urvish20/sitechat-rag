@@ -11,6 +11,7 @@ const envSchema = z.object({
   QDRANT_URL: z.string({ required_error: 'QDRANT_URL is required' }),
   QDRANT_API_KEY: z.string({ required_error: 'QDRANT_API_KEY is required' }),
   QDRANT_COLLECTION: z.string().default('sitechat'),
+  GEMINI_API_KEY: z.string({ required_error: 'GEMINI_API_KEY is required' }),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

@@ -1,13 +1,20 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useGetSessionStatusQuery } from '../services/siteChatApi';
-import { updateProgress, setAppState, addSession, setMessages, updateSessionStatus } from '../slices/chatSlice';
+import {
+  updateProgress,
+  updateStageFromBackend,
+  setAppState,
+  addSession,
+  setMessages,
+  updateSessionStatus,
+} from '../slices/chatSlice';
 import { addToast } from '../slices/toastSlice';
 
 /**
- * Custom hook encapsulating backend crawl status polling.
- * Dispatches progress bar metrics, updates step states, and transitions
- * session state machine to ready/error modes upon completion/failure.
+ * Custom hook that polls backend session status every 500ms during processing.
+ * Drives the step checklist via backend stage strings, updates counters, and
+ * transitions the state machine to ready/error when the pipeline completes.
  */
 export function usePolling() {
   const dispatch = useDispatch();
@@ -22,51 +29,71 @@ export function usePolling() {
 
   useEffect(() => {
     if (statusError) {
-      console.error('Polling connection error:', statusError);
+      console.error('[usePolling] Polling error:', statusError);
       dispatch(setAppState('error'));
-      dispatch(addToast({ message: 'Backend connection lost during crawling.', type: 'error' }));
+      dispatch(addToast({ message: 'Backend connection lost during processing.', type: 'error' }));
     }
   }, [statusError, dispatch]);
 
   useEffect(() => {
-    if (statusData) {
-      dispatch(updateProgress(statusData.progress));
+    if (!statusData) return;
 
-      if (statusData.status === 'completed') {
-        const timer = setTimeout(() => {
-          dispatch(setAppState('ready'));
-          dispatch(addSession({ id: sessionId, url: currentUrl }));
-          dispatch(updateSessionStatus({ id: sessionId, status: 'completed' }));
-          
-          dispatch(
-            setMessages([
-              {
-                id: 'init-1',
-                role: 'assistant',
-                text: `Hi there! I have finished crawling and indexing **${currentUrl}**.\n\nI parsed ${statusData.pagesVisited || 24} pages. Ask me anything about the content of this website!`,
-                sources: [
-                  {
-                    title: 'Home Page Index',
-                    url: `${currentUrl}/`,
-                    score: 1.0,
-                  },
-                ],
-              },
-            ])
-          );
-          
-          dispatch(addToast({ message: 'Website processing completed!', type: 'success' }));
-        }, 800);
-        return () => clearTimeout(timer);
-      } else if (statusData.status === 'failed') {
-        dispatch(setAppState('error'));
-        dispatch(updateSessionStatus({ id: sessionId, status: 'failed' }));
-        dispatch(addToast({ message: 'Crawl process failed on backend.', type: 'error' }));
-      }
+    // Update progress bar
+    dispatch(updateProgress(statusData.progress ?? 0));
+
+    // Drive checklist steps from backend stage string
+    dispatch(
+      updateStageFromBackend({
+        stage: statusData.stage,
+        chunksCreated: statusData.chunksCreated,
+        embeddingsCreated: statusData.embeddingsCreated,
+        vectorsStored: statusData.vectorsStored,
+      })
+    );
+
+    const isReady = statusData.status === 'ready' || statusData.status === 'completed';
+
+    if (isReady) {
+      const pagesVisited = statusData.pagesVisited ?? 0;
+      const chunksCreated = statusData.chunksCreated ?? 0;
+      const vectorsStored = statusData.vectorsStored ?? 0;
+
+      const timer = setTimeout(() => {
+        dispatch(setAppState('ready'));
+        dispatch(addSession({ id: sessionId, url: currentUrl }));
+        dispatch(updateSessionStatus({ id: sessionId, status: 'completed' }));
+
+        dispatch(
+          setMessages([
+            {
+              id: 'init-ready',
+              role: 'assistant',
+              text: [
+                `✅ I've finished crawling and indexing **${currentUrl}**.`,
+                '',
+                `📄 **${pagesVisited}** pages crawled`,
+                `🧩 **${chunksCreated}** text chunks created`,
+                `🔍 **${vectorsStored}** vectors stored in Qdrant`,
+                '',
+                'Ask me anything about the content of this website!',
+              ].join('\n'),
+              sources: [],
+            },
+          ])
+        );
+
+        dispatch(addToast({ message: 'Website is indexed and ready to chat!', type: 'success' }));
+      }, 600);
+
+      return () => clearTimeout(timer);
+    }
+
+    if (statusData.status === 'failed') {
+      dispatch(setAppState('error'));
+      dispatch(updateSessionStatus({ id: sessionId, status: 'failed' }));
+      dispatch(addToast({ message: 'Pipeline failed on the backend. Check server logs.', type: 'error' }));
     }
   }, [statusData, dispatch, sessionId, currentUrl]);
 
-  return {
-    statusData,
-  };
+  return { statusData };
 }
