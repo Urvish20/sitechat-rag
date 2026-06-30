@@ -48,6 +48,10 @@ export function usePolling() {
         chunksCreated: statusData.chunksCreated,
         embeddingsCreated: statusData.embeddingsCreated,
         vectorsStored: statusData.vectorsStored,
+        pagesSkipped: statusData.pagesSkipped,
+        crawlDurationSec: statusData.crawlDurationSec,
+        totalDurationSec: statusData.totalDurationSec,
+        logs: statusData.logs,
       })
     );
 
@@ -57,6 +61,9 @@ export function usePolling() {
       const pagesVisited = statusData.pagesVisited ?? 0;
       const chunksCreated = statusData.chunksCreated ?? 0;
       const vectorsStored = statusData.vectorsStored ?? 0;
+      const pagesSkipped = statusData.pagesSkipped ?? 0;
+      const crawlDurationSec = statusData.crawlDurationSec ?? '0.0';
+      const totalDurationSec = statusData.totalDurationSec ?? '0.0';
 
       const timer = setTimeout(() => {
         dispatch(setAppState('ready'));
@@ -71,12 +78,15 @@ export function usePolling() {
               text: [
                 `✅ I've finished crawling and indexing **${currentUrl}**.`,
                 '',
-                `📄 **${pagesVisited}** pages crawled`,
+                `📄 **${pagesVisited}** pages crawled successfully`,
+                pagesSkipped > 0 ? `⚠️ **${pagesSkipped}** pages skipped (robots.txt, media, or errors)` : null,
                 `🧩 **${chunksCreated}** text chunks created`,
                 `🔍 **${vectorsStored}** vectors stored in Qdrant`,
+                `⏱️ **Crawl time:** ${crawlDurationSec} seconds`,
+                `⚙️ **Total processing time:** ${totalDurationSec} seconds`,
                 '',
                 'Ask me anything about the content of this website!',
-              ].join('\n'),
+              ].filter(Boolean).join('\n'),
               sources: [],
             },
           ])

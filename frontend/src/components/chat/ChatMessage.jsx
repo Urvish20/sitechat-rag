@@ -1,9 +1,10 @@
 import React from 'react';
 import { Bot, User } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import SourceCard from './SourceCard';
 
 export default function ChatMessage({ message }) {
-  // message: { id, role: 'user' | 'assistant', text, sources: [...] }
   const isAssistant = message.role === 'assistant';
 
   return (
@@ -25,7 +26,50 @@ export default function ChatMessage({ message }) {
             ? 'bg-zinc-50 border-zinc-200/60 dark:bg-zinc-900 dark:border-zinc-800/80 rounded-tl-sm text-zinc-850 dark:text-zinc-250'
             : 'bg-zinc-900 border-zinc-900 text-white rounded-tr-sm dark:bg-white dark:border-white dark:text-zinc-950'
         }`}>
-          <p className="whitespace-pre-wrap">{message.text}</p>
+          {isAssistant ? (
+            <div className="prose prose-zinc dark:prose-invert max-w-none text-left text-sm leading-relaxed space-y-2.5">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // Keep code blocks formatted nicely
+                  code({ node, inline, className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '');
+                    return !inline ? (
+                      <pre className="bg-zinc-250 dark:bg-zinc-950 p-3 rounded-lg overflow-x-auto text-xs my-2 font-mono">
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    ) : (
+                      <code className="bg-zinc-250 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md text-xs font-mono" {...props}>
+                        {children}
+                      </code>
+                    );
+                  },
+                  ul({ children }) {
+                    return <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>;
+                  },
+                  ol({ children }) {
+                    return <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>;
+                  },
+                  h1({ children }) { return <h1 className="text-base font-extrabold mt-3 mb-1.5">{children}</h1>; },
+                  h2({ children }) { return <h2 className="text-sm font-bold mt-2.5 mb-1">{children}</h2>; },
+                  h3({ children }) { return <h3 className="text-xs font-bold mt-2 mb-1">{children}</h3>; },
+                  a({ href, children }) {
+                    return (
+                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-600 dark:text-cyan-400 underline font-semibold">
+                        {children}
+                      </a>
+                    );
+                  }
+                }}
+              >
+                {message.text}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap text-left">{message.text}</p>
+          )}
         </div>
 
         {/* Sources Section (only for AI responses if sources are present) */}

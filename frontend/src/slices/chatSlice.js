@@ -29,6 +29,10 @@ const initialState = {
   chunksCreated: 0,
   embeddingsCreated: 0,
   vectorsStored: 0,
+  pagesSkipped: 0,
+  crawlDurationSec: null,
+  totalDurationSec: null,
+  logs: [],
   steps: initialSteps,
   messages: [],
   sessions: [
@@ -90,14 +94,20 @@ export const chatSlice = createSlice({
       }
     },
     updateStageFromBackend: (state, action) => {
-      const { stage, chunksCreated, embeddingsCreated, vectorsStored } = action.payload;
+      const {
+        stage, chunksCreated, embeddingsCreated, vectorsStored,
+        pagesSkipped, crawlDurationSec, totalDurationSec, logs,
+      } = action.payload;
 
       if (stage) state.currentStage = stage;
       if (chunksCreated !== undefined) state.chunksCreated = chunksCreated;
       if (embeddingsCreated !== undefined) state.embeddingsCreated = embeddingsCreated;
       if (vectorsStored !== undefined) state.vectorsStored = vectorsStored;
+      if (pagesSkipped !== undefined) state.pagesSkipped = pagesSkipped;
+      if (crawlDurationSec !== null && crawlDurationSec !== undefined) state.crawlDurationSec = crawlDurationSec;
+      if (totalDurationSec !== null && totalDurationSec !== undefined) state.totalDurationSec = totalDurationSec;
+      if (Array.isArray(logs)) state.logs = logs;
 
-      // Map backend stage string to step statuses
       const currentStageIndex = STAGE_ORDER.indexOf(stage);
       if (currentStageIndex === -1) return;
 

@@ -54,9 +54,13 @@ class SessionService {
       currentPage: session.currentPage ?? '',
       pagesVisited: session.pagesVisited ?? 0,
       totalPages: session.totalPages ?? 0,
+      pagesSkipped: session.pagesSkipped ?? 0,
       chunksCreated: session.chunksCreated ?? 0,
       embeddingsCreated: session.embeddingsCreated ?? 0,
       vectorsStored: session.vectorsStored ?? 0,
+      crawlDurationSec: session.crawlDurationSec ?? null,
+      totalDurationSec: session.totalDurationSec ?? null,
+      logs: session.logs ?? [],
     };
   }
 

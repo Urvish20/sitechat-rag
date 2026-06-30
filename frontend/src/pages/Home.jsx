@@ -74,6 +74,7 @@ export default function Home() {
               steps={steps}
               currentUrl={currentUrl}
               statusData={statusData}
+              onCancel={deleteSession}
             />
           </motion.div>
         )}
@@ -116,14 +117,22 @@ export default function Home() {
               </p>
             </div>
 
-            <Button
-              variant="primary"
-              onClick={handleReset}
-              icon={RefreshCw}
-              className="bg-red-650 hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-650"
-            >
-              Reset Session
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+              <Button
+                variant="primary"
+                onClick={() => createSession(currentUrl)}
+                icon={RefreshCw}
+                className="bg-cyan-600 hover:bg-cyan-550 dark:bg-cyan-700 dark:hover:bg-cyan-650"
+              >
+                Retry Crawling
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={handleReset}
+              >
+                Reset & Try New URL
+              </Button>
+            </div>
           </motion.div>
         )}
 
