@@ -10,7 +10,7 @@ const initialSteps = [
 ];
 
 const initialState = {
-  appState: 'landing', // 'landing' | 'processing' | 'ready'
+  appState: 'idle', // 'idle' | 'processing' | 'ready' | 'chatting' | 'deleting' | 'error'
   currentUrl: '',
   sessionId: null,
   crawlingProgress: 0,
@@ -20,6 +20,8 @@ const initialState = {
     {
       id: 'sess-1',
       url: 'https://tailwindcss.com',
+      status: 'completed',
+      progress: 100,
       messages: [
         {
           id: 'prev-1',
@@ -32,6 +34,8 @@ const initialState = {
     {
       id: 'sess-2',
       url: 'https://react.dev',
+      status: 'completed',
+      progress: 100,
       messages: [
         {
           id: 'prev-2',
@@ -77,21 +81,48 @@ export const chatSlice = createSlice({
         }
         return step;
       });
+
+      // Update progress in session object list
+      if (state.sessionId) {
+        const session = state.sessions.find(s => s.id === state.sessionId);
+        if (session) {
+          session.progress = progress;
+        }
+      }
     },
     setAppState: (state, action) => {
       state.appState = action.payload;
     },
     addMessage: (state, action) => {
       state.messages.push(action.payload);
+      // Synchronize back to active history list
+      if (state.activeSessionId) {
+        const session = state.sessions.find(s => s.id === state.activeSessionId);
+        if (session) {
+          session.messages = state.messages;
+        }
+      }
     },
     setMessages: (state, action) => {
       state.messages = action.payload;
+      if (state.activeSessionId) {
+        const session = state.sessions.find(s => s.id === state.activeSessionId);
+        if (session) {
+          session.messages = state.messages;
+        }
+      }
     },
     clearMessages: (state) => {
       state.messages = [];
+      if (state.activeSessionId) {
+        const session = state.sessions.find(s => s.id === state.activeSessionId);
+        if (session) {
+          session.messages = [];
+        }
+      }
     },
     resetSession: (state) => {
-      state.appState = 'landing';
+      state.appState = 'idle';
       state.currentUrl = '';
       state.sessionId = null;
       state.crawlingProgress = 0;
@@ -100,24 +131,27 @@ export const chatSlice = createSlice({
       state.activeSessionId = null;
     },
     addSession: (state, action) => {
-      const url = action.payload.url;
-      const id = action.payload.id;
-      // Prevent duplication in recent history list
+      const { url, id } = action.payload;
       const exists = state.sessions.some(s => s.url === url);
       if (!exists) {
         state.sessions.unshift({
           id,
           url,
+          status: 'completed',
+          progress: 100,
           messages: []
         });
       }
       state.activeSessionId = id;
     },
     selectSession: (state, action) => {
+      // Disallow context change during processing
+      if (state.appState === 'processing' || state.appState === 'deleting') return;
+
       const session = action.payload;
       state.activeSessionId = session.id;
       state.currentUrl = session.url;
-      state.sessionId = session.id; // use session ID directly
+      state.sessionId = session.id;
       state.appState = 'ready';
       
       const foundSession = state.sessions.find(s => s.id === session.id);
@@ -140,6 +174,13 @@ export const chatSlice = createSlice({
       if (session) {
         session.messages = messages;
       }
+    },
+    updateSessionStatus: (state, action) => {
+      const { id, status } = action.payload;
+      const session = state.sessions.find(s => s.id === id);
+      if (session) {
+        session.status = status;
+      }
     }
   },
 });
@@ -156,6 +197,7 @@ export const {
   addSession,
   selectSession,
   updateSessionMessages,
+  updateSessionStatus,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
