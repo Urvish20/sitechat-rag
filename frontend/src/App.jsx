@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import AppLayout from './components/layout/AppLayout';
 import Home from './pages/Home';
 import NotFound from './pages/NotFound';
 import Button from './components/common/Button';
-import { X, Sparkles, Sliders, Shield, Database, Cpu } from 'lucide-react';
+import { X, Sparkles, Sliders, Database, Cpu } from 'lucide-react';
+import { selectSession, resetSession } from './slices/chatSlice';
 
 const GithubIcon = ({ size = 20 }) => (
   <svg height={size} width={size} viewBox="0 0 16 16" fill="currentColor">
@@ -12,79 +14,24 @@ const GithubIcon = ({ size = 20 }) => (
 );
 
 export default function App() {
-
+  const dispatch = useDispatch();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [appState, setAppState] = useState('landing'); // 'landing' | 'processing' | 'ready' | 'notfound'
   
-  // Site crawling parameters
-  const [currentUrl, setCurrentUrl] = useState('');
-  const [crawlingProgress, setCrawlingProgress] = useState(0);
-  const [steps, setSteps] = useState([]);
-  const [messages, setMessages] = useState([]);
-  
-  // Mock sessions list
-  const [sessions, setSessions] = useState([
-    {
-      id: 'sess-1',
-      url: 'https://tailwindcss.com',
-      messages: [
-        {
-          id: 'prev-1',
-          role: 'assistant',
-          text: 'Welcome back! I have cached the Tailwind v4 index. Ask me any syntax queries.',
-          sources: []
-        }
-      ]
-    },
-    {
-      id: 'sess-2',
-      url: 'https://react.dev',
-      messages: [
-        {
-          id: 'prev-2',
-          role: 'assistant',
-          text: 'React 19 documentation is fully cached. How can I assist you with hooks?',
-          sources: []
-        }
-      ]
-    }
-  ]);
-  const [activeSessionId, setActiveSessionId] = useState(null);
+  // Redux Selectors
+  const appState = useSelector((state) => state.chat.appState);
+  const sessions = useSelector((state) => state.chat.sessions);
+  const activeSessionId = useSelector((state) => state.chat.activeSessionId);
 
   // Dialog Modals
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
-
-  const handleAddSession = (url) => {
-    const newSession = {
-      id: `sess-${Date.now()}`,
-      url,
-      messages: [] // Main Home state maintains active messages
-    };
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newSession.id);
-  };
-
   const handleSelectSession = (session) => {
-    setActiveSessionId(session.id);
-    setCurrentUrl(session.url);
-    setAppState('ready');
-    setMessages(session.messages.length > 0 ? session.messages : [
-      {
-        id: 'sess-greet',
-        role: 'assistant',
-        text: `Loaded cached index for **${session.url}**. Ask me any question related to this website's knowledge-base!`,
-        sources: []
-      }
-    ]);
+    dispatch(selectSession(session));
   };
 
   const handleNewSession = () => {
-    setAppState('landing');
-    setCurrentUrl('');
-    setMessages([]);
-    setActiveSessionId(null);
+    dispatch(resetSession());
   };
 
   return (
@@ -101,19 +48,7 @@ export default function App() {
       {appState === 'notfound' ? (
         <NotFound onGoBack={handleNewSession} />
       ) : (
-        <Home
-          appState={appState}
-          setAppState={setAppState}
-          currentUrl={currentUrl}
-          setCurrentUrl={setCurrentUrl}
-          crawlingProgress={crawlingProgress}
-          setCrawlingProgress={setCrawlingProgress}
-          steps={steps}
-          setSteps={setSteps}
-          messages={messages}
-          setMessages={setMessages}
-          onAddSession={handleAddSession}
-        />
+        <Home />
       )}
 
       {/* Modal Settings Backdrop */}
@@ -137,7 +72,7 @@ export default function App() {
               <div className="flex items-center justify-between py-2">
                 <div>
                   <h4 className="text-sm font-semibold text-zinc-900 dark:text-white">Chunk Size</h4>
-                  <p className="text-xs text-zinc-550 dark:text-zinc-450">Tokens per text block</p>
+                  <p className="text-xs text-zinc-555 dark:text-zinc-450">Tokens per text block</p>
                 </div>
                 <span className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold font-mono dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
                   500 Tokens
@@ -147,7 +82,7 @@ export default function App() {
               <div className="flex items-center justify-between py-2">
                 <div>
                   <h4 className="text-sm font-semibold text-zinc-900 dark:text-white">Overlap size</h4>
-                  <p className="text-xs text-zinc-550 dark:text-zinc-450">Token sharing between chunks</p>
+                  <p className="text-xs text-zinc-555 dark:text-zinc-450">Token sharing between chunks</p>
                 </div>
                 <span className="rounded-lg bg-zinc-100 px-3 py-1.5 text-xs font-semibold font-mono dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
                   50 Tokens
@@ -157,7 +92,7 @@ export default function App() {
               <div className="flex items-center justify-between py-2">
                 <div>
                   <h4 className="text-sm font-semibold text-zinc-900 dark:text-white">Mock Vector DB</h4>
-                  <p className="text-xs text-zinc-550 dark:text-zinc-450">Local database used for RAG</p>
+                  <p className="text-xs text-zinc-555 dark:text-zinc-450">Local database used for RAG</p>
                 </div>
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                   <Database size={13} /> Active (LocalMemory)
@@ -198,10 +133,10 @@ export default function App() {
               
               <div className="space-y-1">
                 <h4 className="text-md font-bold text-zinc-900 dark:text-white">SiteChat RAG Workspace</h4>
-                <p className="text-xs text-zinc-550 dark:text-zinc-450">Version 1.0.0 (Client Demo)</p>
+                <p className="text-xs text-zinc-555 dark:text-zinc-450">Version 1.0.0 (Client Demo)</p>
               </div>
 
-              <p className="text-xs text-zinc-600 dark:text-zinc-450 leading-relaxed text-left max-w-sm mx-auto bg-zinc-100/50 dark:bg-zinc-950 p-4.5 rounded-xl border border-zinc-200/50 dark:border-zinc-900">
+              <p className="text-xs text-zinc-650 dark:text-zinc-450 leading-relaxed text-left max-w-sm mx-auto bg-zinc-100/50 dark:bg-zinc-950 p-4.5 rounded-xl border border-zinc-200/50 dark:border-zinc-900">
                 SiteChat allows user-friendly, real-time question answering over crawlable web resources. This interface is fully designed using utility styles from **Tailwind CSS v4** to resemble premium modern SaaS products.
               </p>
             </div>

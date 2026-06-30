@@ -1,178 +1,151 @@
 import React, { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { MessageSquare } from 'lucide-react';
 import UrlInput from '../components/crawler/UrlInput';
 import ProcessingStatus from '../components/crawler/ProcessingStatus';
 import ChatContainer from '../components/chat/ChatContainer';
-
-export default function Home({
-  appState, // 'landing' | 'processing' | 'ready'
+import {
+  startSession,
+  setSessionId,
+  updateProgress,
   setAppState,
-  currentUrl,
-  setCurrentUrl,
-  crawlingProgress,
-  setCrawlingProgress,
-  steps,
-  setSteps,
-  messages,
+  addMessage,
   setMessages,
-  onAddSession,
-}) {
+  resetSession,
+  addSession,
+} from '../slices/chatSlice';
+import {
+  useCreateSessionMutation,
+  useGetSessionStatusQuery,
+  useDeleteSessionMutation,
+  useAskQuestionMutation,
+} from '../services/siteChatApi';
+
+export default function Home() {
+  const dispatch = useDispatch();
   const [isTyping, setIsTyping] = useState(false);
 
-  // Trigger RAG indexing simulation
-  const handleUrlSubmit = (url) => {
-    setCurrentUrl(url);
-    setAppState('processing');
-    setCrawlingProgress(0);
-    
-    // Reset steps to pending
-    const initialSteps = [
-      { id: 'crawl', label: 'Crawling Website', status: 'running' },
-      { id: 'extract', label: 'Extracting Content', status: 'pending' },
-      { id: 'clean', label: 'Cleaning HTML', status: 'pending' },
-      { id: 'chunk', label: 'Chunking Content', status: 'pending' },
-      { id: 'embed', label: 'Creating Embeddings', status: 'pending' },
-      { id: 'index', label: 'Building Search Index', status: 'pending' },
-    ];
-    setSteps(initialSteps);
+  // Redux selectors
+  const appState = useSelector((state) => state.chat.appState);
+  const currentUrl = useSelector((state) => state.chat.currentUrl);
+  const sessionId = useSelector((state) => state.chat.sessionId);
+  const crawlingProgress = useSelector((state) => state.chat.crawlingProgress);
+  const steps = useSelector((state) => state.chat.steps);
+  const messages = useSelector((state) => state.chat.messages);
+
+  // RTK Query hooks
+  const [createSession] = useCreateSessionMutation();
+  const [deleteSession] = useDeleteSessionMutation();
+  const [askQuestion] = useAskQuestionMutation();
+
+  // Query session status - conditional polling
+  const { data: statusData } = useGetSessionStatusQuery(sessionId, {
+    skip: !sessionId || appState !== 'processing',
+    pollingInterval: 500, // poll status every 500ms
+  });
+
+  // Watch polling updates
+  useEffect(() => {
+    if (statusData) {
+      dispatch(updateProgress(statusData.progress));
+
+      if (statusData.status === 'completed') {
+        const timer = setTimeout(() => {
+          dispatch(setAppState('ready'));
+          dispatch(addSession({ id: sessionId, url: currentUrl }));
+          dispatch(
+            setMessages([
+              {
+                id: 'init-1',
+                role: 'assistant',
+                text: `Hi there! I have finished crawling and indexing **${currentUrl}**.\n\nI processed 24 pages, extracted 84 paragraphs, and generated local search embeddings. Feel free to ask me anything about the content of this website!`,
+                sources: [
+                  {
+                    title: 'Home Page Index',
+                    url: `${currentUrl}/`,
+                    snippet: 'SiteChat local crawler completed crawling main homepage sections and layout templates.',
+                  },
+                  {
+                    title: 'About Knowledge Hub',
+                    url: `${currentUrl}/about`,
+                    snippet: 'Company history, executive team info, and services description chunks compiled.',
+                  },
+                ],
+              },
+            ])
+          );
+        }, 800);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [statusData, dispatch, sessionId, currentUrl]);
+
+  // Submit URL handler
+  const handleUrlSubmit = async (url) => {
+    try {
+      // Setup initial visual status
+      dispatch(startSession(url));
+
+      // Trigger mutation call to backend
+      const response = await createSession(url).unwrap();
+      dispatch(setSessionId(response.sessionId));
+    } catch (err) {
+      console.error('Failed to create session on backend:', err);
+      dispatch(resetSession());
+    }
   };
 
-  // Processing state machine simulation
-  useEffect(() => {
-    if (appState !== 'processing') return;
-
-    let progressInterval = setInterval(() => {
-      setCrawlingProgress((prev) => {
-        const next = prev + 2.5;
-        if (next >= 100) {
-          clearInterval(progressInterval);
-          return 100;
-        }
-        return next;
-      });
-    }, 100);
-
-    return () => clearInterval(progressInterval);
-  }, [appState]);
-
-  // Adjust steps based on progress
-  useEffect(() => {
-    if (appState !== 'processing') return;
-
-    setSteps((prevSteps) => {
-      return prevSteps.map((step, idx) => {
-        const stepThreshold = (idx + 1) * 16.6; // evenly split up to 100%
-        if (crawlingProgress >= 100) {
-          return { ...step, status: 'completed' };
-        } else if (crawlingProgress >= stepThreshold) {
-          // Complete this step, start next
-          return { ...step, status: 'completed' };
-        } else if (crawlingProgress >= stepThreshold - 16.6 && step.status === 'pending') {
-          return { ...step, status: 'running' };
-        }
-        return step;
-      });
-    });
-
-    if (crawlingProgress >= 100) {
-      const delay = setTimeout(() => {
-        setAppState('ready');
-        // Add to sidebar sessions
-        onAddSession(currentUrl);
-        // Setup initial greeting message
-        setMessages([
-          {
-            id: 'init-1',
-            role: 'assistant',
-            text: `Hi there! I have finished crawling and indexing **${currentUrl}**.\n\nI processed 24 pages, extracted 84 paragraphs, and generated local search embeddings. Feel free to ask me anything about the content of this website!`,
-            sources: [
-              {
-                title: 'Home Page Index',
-                url: `${currentUrl}/`,
-                snippet: 'SiteChat local crawler completed crawling main homepage sections and layout templates.'
-              },
-              {
-                title: 'About Knowledge Hub',
-                url: `${currentUrl}/about`,
-                snippet: 'Company history, executive team info, and services description chunks compiled.'
-              }
-            ]
-          }
-        ]);
-      }, 800);
-      return () => clearTimeout(delay);
-    }
-  }, [crawlingProgress, appState]);
-
-  // Handle user typing and simulated RAG response
-  const handleSendMessage = (text) => {
-    // Add user message
+  // Chat message send handler
+  const handleSendMessage = async (text) => {
     const userMsg = {
       id: `msg-${Date.now()}-user`,
       role: 'user',
       text,
     };
-    setMessages((prev) => [...prev, userMsg]);
+    dispatch(addMessage(userMsg));
     setIsTyping(true);
 
-    // Simulate RAG retrieval and response
-    setTimeout(() => {
-      let aiText = '';
-      let sources = [];
-      const query = text.toLowerCase();
-
-      // Simple keyword matching for nice demo
-      if (query.includes('summary') || query.includes('about') || query.includes('what is')) {
-        aiText = `Based on the crawled pages, **${currentUrl}** appears to be a modern web service featuring highly responsive layout sections, client assets, and interactive frameworks.\n\nHere is a quick summary:\n1. **Core Purpose**: Offers digital resources, documentation guidelines, and community channels.\n2. **Architecture**: Relies on modern rendering stacks, optimized asset delivery pipelines, and secure user data storage.\n3. **Services**: Provides direct integration hooks, standard developer API keys, and enterprise support schemes.`;
-        sources = [
-          {
-            title: 'Knowledge Base - Index',
-            url: `${currentUrl}/docs/getting-started`,
-            snippet: 'Getting started guide containing platform architectural design schemas and core features.'
-          },
-          {
-            title: 'Product Overview',
-            url: `${currentUrl}/products/overview`,
-            snippet: 'Detailed catalog of software resources, API tools, and commercial licenses.'
-          }
-        ];
-      } else if (query.includes('contact') || query.includes('support') || query.includes('help')) {
-        aiText = `According to the contact page information indexed:\n- **Support channels**: Available via community discord and email ticket tracking systems.\n- **Technical Assistance**: Accessible on GitHub issues boards for code queries and developer bugs.\n- **Enterprise SLAs**: Managed directly via dedicated service desks.`;
-        sources = [
-          {
-            title: 'Contact Support Channels',
-            url: `${currentUrl}/contact`,
-            snippet: 'Help center email guidelines, feedback forums, and physical address details.'
-          }
-        ];
-      } else {
-        aiText = `Thank you for your question. By query-searching the local RAG index of **${currentUrl}**, I located sections explaining general documentation rules, quick-start templates, and client-side setup configurations. \n\nIs there a specific section or feature (e.g., pricing, installation, support) you would like me to retrieve more context on?`;
-        sources = [
-          {
-            title: 'General Documentation',
-            url: `${currentUrl}/docs`,
-            snippet: 'Main landing page for developer documentation, code examples, and tutorial workflows.'
-          }
-        ];
-      }
-
+    try {
+      // Trigger mutation call to backend
+      const response = await askQuestion({ sessionId, question: text }).unwrap();
+      
       const assistantMsg = {
         id: `msg-${Date.now()}-ai`,
         role: 'assistant',
-        text: aiText,
-        sources,
+        text: response.answer,
+        sources: response.sources.map((src) => ({
+          title: src.title,
+          url: src.url,
+          snippet: `Retrieved context regarding "${text}" from indexed content.`,
+        })),
       };
-
-      setMessages((prev) => [...prev, assistantMsg]);
+      dispatch(addMessage(assistantMsg));
+    } catch (err) {
+      console.error('Failed to ask question:', err);
+      dispatch(
+        addMessage({
+          id: `msg-${Date.now()}-error`,
+          role: 'assistant',
+          text: 'Sorry, I encountered an error communicating with the backend. Please check if the server is running.',
+          sources: [],
+        })
+      );
+    } finally {
       setIsTyping(false);
-    }, 1500); // 1.5s typing delay for realism
+    }
   };
 
-  const handleClearSession = () => {
-    setMessages([]);
-    setAppState('landing');
-    setCurrentUrl('');
-    setCrawlingProgress(0);
+  // Clear session handler
+  const handleClearSession = async () => {
+    try {
+      if (sessionId) {
+        await deleteSession(sessionId).unwrap();
+      }
+    } catch (err) {
+      console.error('Failed to delete session on backend:', err);
+    } finally {
+      dispatch(resetSession());
+    }
   };
 
   return (
