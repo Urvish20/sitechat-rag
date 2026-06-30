@@ -12,8 +12,20 @@ const app = express();
 
 app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
+const allowedOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+
 app.use(cors({
-  origin: env.CORS_ORIGIN,
+  origin: (requestOrigin, callback) => {
+    if (!requestOrigin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(requestOrigin)) {
+      return callback(null, requestOrigin);
+    }
+
+    return callback(new Error(`CORS origin denied: ${requestOrigin}`));
+  },
   credentials: true,
 }));
 
