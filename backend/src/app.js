@@ -7,6 +7,7 @@ import healthRouter from './routes/health.routes.js';
 import sessionRouter from './routes/session.routes.js';
 import chatRouter from './routes/chat.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
+import { logger } from './utils/logger.js';
 
 const app = express();
 
@@ -27,7 +28,8 @@ app.use(cors({
       return callback(null, requestOrigin);
     }
 
-    return callback(new Error(`CORS origin denied: ${requestOrigin}`));
+    logger.warn(`CORS origin blocked: ${requestOrigin}. Allowed origins: ${allowedOrigins.join(', ')}`);
+    return callback(null, false);
   },
   credentials: true,
 }));
