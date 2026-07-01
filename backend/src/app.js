@@ -12,7 +12,9 @@ const app = express();
 
 app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 
-const allowedOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+const allowedOrigins = env.CORS_ORIGIN.split(',')
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
 
 app.use(cors({
   origin: (requestOrigin, callback) => {
@@ -20,7 +22,8 @@ app.use(cors({
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes('*') || allowedOrigins.includes(requestOrigin)) {
+    const normalizedOrigin = requestOrigin.replace(/\/$/, '');
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(normalizedOrigin)) {
       return callback(null, requestOrigin);
     }
 

@@ -6,7 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   PORT: z.coerce.number().default(5000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173,http://localhost:5174,https://sitechat-rag.vercel.app/'),
+  CORS_ORIGIN: z.string().default('http://localhost:5173,http://localhost:5174,https://sitechat-rag.vercel.app'),
   MONGO_DB_URL: z.string().optional(),
   QDRANT_URL: z.string({ required_error: 'QDRANT_URL is required' }).min(1, 'QDRANT_URL cannot be empty'),
   QDRANT_API_KEY: z.string({ required_error: 'QDRANT_API_KEY is required' }).min(1, 'QDRANT_API_KEY cannot be empty'),
