@@ -24,12 +24,3 @@ export const PIPELINE_STAGES = {
   INDEXING: 'Indexing into Qdrant',
   READY: 'Ready',
 };
-
-export const MOCK_STEPS = [
-  'Crawling Website',
-  'Extracting Content',
-  'Cleaning HTML',
-  'Chunking Content',
-  'Creating Embeddings',
-  'Building Search Index'
-];

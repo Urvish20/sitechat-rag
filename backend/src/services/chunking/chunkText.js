@@ -3,6 +3,8 @@ import { splitIntoChunks, cleanChunk } from './chunkUtils.js';
 import { logger } from '../../utils/logger.js';
 
 const MIN_CHUNK_LENGTH = 20;
+const DEFAULT_CHUNK_SIZE = 1000;
+const DEFAULT_CHUNK_OVERLAP = 200;
 
 /**
  * Splits page content into structured chunk objects for embedding.
@@ -18,7 +20,7 @@ export function chunkText(page) {
   const { url, title, content } = page;
   if (!content) return [];
 
-  const rawChunks = splitIntoChunks(content, 1000, 200);
+  const rawChunks = splitIntoChunks(content, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
 
   const finalChunks = rawChunks
     .map(cleanChunk)
