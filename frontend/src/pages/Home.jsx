@@ -67,7 +67,7 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex-1 flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 overflow-y-auto"
+            className="flex-1 flex items-start justify-center py-10 x-4 bg-zinc-50 dark:bg-zinc-950 overflow-y-auto"
           >
             <ProcessingStatus
               progress={crawlingProgress}

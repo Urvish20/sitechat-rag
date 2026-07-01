@@ -27,17 +27,17 @@ export default function ProcessingStatus({ progress, steps, currentUrl, statusDa
   ].filter((s) => s.show);
 
   return (
-    <Card className="w-full max-w-xl mx-auto p-8 shadow-xl bg-white/40 dark:bg-zinc-900/40 border-zinc-200/50 dark:border-zinc-800/50 relative overflow-hidden">
-      <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-indigo-500" />
+    <Card className="w-full max-w-xl mx-auto p-5 shadow-xl bg-white/40 dark:bg-zinc-900/40 border-zinc-200/50 dark:border-zinc-800/50 relative overflow-hidden">
+      <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-cyan-500 via-purple-500 to-indigo-500" />
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <div className="text-left space-y-1.5">
-            <h2 className="text-xl font-extrabold tracking-tight text-zinc-900 dark:text-white flex items-center gap-2">
-              <Loader2 className="animate-spin text-cyan-500" size={20} />
+          <div className="text-left space-y-1">
+            <h2 className="text-base font-extrabold tracking-tight text-zinc-900 dark:text-white flex items-center gap-2">
+              <Loader2 className="animate-spin text-cyan-500" size={16} />
               Analyzing Website Content
             </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-450 font-semibold">
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-450 font-bold uppercase tracking-wider">
               {stage}
             </p>
           </div>
@@ -46,7 +46,7 @@ export default function ProcessingStatus({ progress, steps, currentUrl, statusDa
               variant="secondary"
               onClick={onCancel}
               icon={XCircle}
-              className="text-red-500 hover:text-red-650 hover:bg-red-50 dark:hover:bg-red-950/20 border-red-200 dark:border-red-900/40"
+              className="text-red-500 hover:text-red-650 hover:bg-red-50 dark:hover:bg-red-950/20 border-red-200 dark:border-red-900/40 text-xs py-1 px-2.5 h-8"
             >
               Cancel
             </Button>
@@ -62,33 +62,33 @@ export default function ProcessingStatus({ progress, steps, currentUrl, statusDa
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -5 }}
-              className="bg-zinc-100/50 dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200/60 dark:border-zinc-900 space-y-3"
+              className="bg-zinc-100/50 dark:bg-zinc-950 p-3 rounded-lg border border-zinc-200/60 dark:border-zinc-900 space-y-2"
             >
-              <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">
-                <Eye size={12} />
+              <div className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">
+                <Eye size={10} />
                 <span>Live Activity</span>
               </div>
 
               {currentPage && (
-                <div className="flex items-start gap-2 text-xs font-semibold text-zinc-800 dark:text-zinc-300">
-                  <Globe size={13} className="text-cyan-500 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-1.5 text-xs font-semibold text-zinc-800 dark:text-zinc-300">
+                  <Globe size={11} className="text-cyan-500 shrink-0 mt-0.5" />
                   <span className="truncate flex-1 font-mono">{currentPage}</span>
                 </div>
               )}
 
               {stats.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                   {stats.map(({ icon: Icon, label, value }) => (
                     <div
                       key={label}
-                      className="flex items-center gap-2 bg-white dark:bg-zinc-900 rounded-lg px-3 py-2 border border-zinc-200 dark:border-zinc-800"
+                      className="flex items-center gap-2 bg-white dark:bg-zinc-900 rounded-md px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-800"
                     >
-                      <Icon size={13} className="text-cyan-500 shrink-0" />
+                      <Icon size={12} className="text-cyan-500 shrink-0" />
                       <div className="min-w-0">
-                        <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-wide truncate">
+                        <div className="text-[9px] text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-wide truncate">
                           {label}
                         </div>
-                        <div className="text-sm font-extrabold text-zinc-900 dark:text-white font-mono">
+                        <div className="text-xs font-extrabold text-zinc-900 dark:text-white font-mono">
                           {value.toLocaleString()}
                         </div>
                       </div>
