@@ -31,22 +31,29 @@ export async function createCollection() {
 
     const exists = await collectionExists();
 
-    if (exists) {
+    if (!exists) {
+      logger.info(`Creating collection "${COLLECTION_NAME}" in Qdrant Cloud...`);
+      await qdrantClient.createCollection(COLLECTION_NAME, {
+        vectors: {
+          size: 768,
+          distance: 'Cosine',
+        },
+      });
+      logger.info(`✓ Collection "${COLLECTION_NAME}" created successfully.`);
+    } else {
       logger.info('Collection already exists in Qdrant. Skipping creation.');
-      return;
     }
 
-    logger.info(`Creating collection "${COLLECTION_NAME}" in Qdrant Cloud...`);
-    await qdrantClient.createCollection(COLLECTION_NAME, {
-      vectors: {
-        size: 768,
-        distance: 'Cosine',
-      },
+    // Always ensure the payload index for 'sessionId' exists
+    logger.info(`Ensuring payload index for "sessionId" exists in collection "${COLLECTION_NAME}"...`);
+    await qdrantClient.createPayloadIndex(COLLECTION_NAME, {
+      field_name: 'sessionId',
+      field_schema: 'keyword',
+      wait: true,
     });
-
-    logger.info(`✓ Collection "${COLLECTION_NAME}" created successfully.`);
+    logger.info(`✓ Payload index for "sessionId" ready.`);
   } catch (error) {
-    logger.error('Error creating collection in Qdrant:', error);
+    logger.error('Error initializing Qdrant collection or index:', error);
     throw error;
   }
 }

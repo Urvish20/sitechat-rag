@@ -2,8 +2,8 @@ import { generateEmbedding } from '../embedding/geminiEmbedding.js';
 import { searchChunks } from '../vector/qdrant.service.js';
 import { logger } from '../../utils/logger.js';
 
-const SIMILARITY_THRESHOLD = 0.70;
-const SECONDARY_THRESHOLD = 0.65;
+const SIMILARITY_THRESHOLD = 0.65;
+const SECONDARY_THRESHOLD = 0.60;
 const TOP_K = 8;
 
 /**

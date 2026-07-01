@@ -12,17 +12,36 @@ const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' 
  * @param {string} text - Input text to embed.
  * @returns {Promise<number[]>} Embedding vector array.
  */
-export async function generateEmbedding(text) {
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export async function generateEmbedding(text, retries = 5, backoff = 2000) {
   if (!text || typeof text !== 'string') {
     throw new Error('generateEmbedding: text must be a non-empty string.');
   }
 
-  const result = await embeddingModel.embedContent({
-    content: { parts: [{ text: text.trim() }] },
-    outputDimensionality: 768,
-  });
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await embeddingModel.embedContent({
+        content: { parts: [{ text: text.trim() }] },
+        outputDimensionality: 768,
+      });
 
-  return result.embedding.values;
+      return result.embedding.values;
+    } catch (error) {
+      const errMsg = error.message || '';
+      const isRateLimit = errMsg.includes('429') || 
+                          errMsg.toLowerCase().includes('too many requests') || 
+                          errMsg.toLowerCase().includes('quota');
+
+      if (isRateLimit && attempt < retries) {
+        const waitTime = backoff * Math.pow(2, attempt - 1);
+        logger.warn(`Gemini Embedding Rate Limit hit (429). Retrying in ${(waitTime / 1000).toFixed(1)}s (attempt ${attempt}/${retries})...`);
+        await delay(waitTime);
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 /**

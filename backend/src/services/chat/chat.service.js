@@ -30,7 +30,16 @@ class ChatService {
       chunks = await retrieve(sessionId, question);
     } catch (err) {
       logger.error('[chatService] Retrieval failed:', err.message);
-      return { answer: FALLBACK_ANSWER, sources: [] };
+      if (err.message.includes('429') || err.message.toLowerCase().includes('quota') || err.message.toLowerCase().includes('limit')) {
+        return { 
+          answer: "Gemini API quota exceeded or rate limited. Please check your Google AI Studio quota or try again in a minute.", 
+          sources: [] 
+        };
+      }
+      return { 
+        answer: "An error occurred while retrieving relevant content. Please try again.", 
+        sources: [] 
+      };
     }
 
     // No relevant context found or below similarity threshold

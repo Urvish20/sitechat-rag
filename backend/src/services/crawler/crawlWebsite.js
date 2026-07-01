@@ -82,6 +82,7 @@ export async function crawlWebsite(sessionId, startUrl) {
     const context = await browser.newContext({
       userAgent: 'SiteChatBot/1.0',
       viewport: { width: 1280, height: 800 },
+      ignoreHTTPSErrors: true,
     });
 
     const appendLog = async (message) => {

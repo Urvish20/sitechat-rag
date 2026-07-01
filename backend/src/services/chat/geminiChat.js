@@ -3,7 +3,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 
 const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-const chatModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const chatModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
 /**
  *
